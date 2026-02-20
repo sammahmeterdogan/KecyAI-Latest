@@ -1,4 +1,4 @@
-package com.tenbinlabs.kecyai.domain;
+﻿package com.kecyai.domain;
 
 import java.util.List;
 
@@ -8,10 +8,10 @@ import java.util.List;
  * so the controller can return a structured error body.
  *
  * Codes:
- *   RUNTIME_UNREACHABLE   — health check failed, autostart disabled
- *   DOCKER_UNAVAILABLE    — cannot reach Docker daemon (socket missing)
- *   RUNTIME_START_FAILED  — container not found or start command failed
- *   RUNTIME_START_TIMEOUT — container started but health didn't pass in time
+ *   RUNTIME_UNREACHABLE   - health check failed, autostart disabled
+ *   DOCKER_UNAVAILABLE    - cannot reach Docker daemon (socket missing)
+ *   RUNTIME_START_FAILED  - container not found or start command failed
+ *   RUNTIME_START_TIMEOUT - container started but health didn't pass in time
  */
 public class RuntimeNotReadyException extends RuntimeException {
 

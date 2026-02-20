@@ -1,6 +1,6 @@
-package com.tenbinlabs.kecyai.application;
+﻿package com.kecyai.application;
 
-import com.tenbinlabs.kecyai.domain.RuntimeClient;
+import com.kecyai.domain.RuntimeClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

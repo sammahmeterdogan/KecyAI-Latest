@@ -1,8 +1,8 @@
-# Repository Guidelines
+﻿# Repository Guidelines
 
 ## Project Structure & Module Organization
 - `frontend/`: Vite + React UI (routes under `src/`, static assets in `public/`).
-- `backend/`: Spring Boot 3 (Java 17) service. Clean Architecture layers under `src/main/java/com/tenbinlabs/kecyai/`.
+- `backend/`: Spring Boot 3 (Java 17) service. Clean Architecture layers under `src/main/java/com/kecyai/`.
 - `runtime/`: Dockerized LeRobot + ROS runtime used by the backend.
 - `infra/`: Docker Compose files and environment templates (see `infra/compose/`).
 - `docs/`: API, architecture, and runbooks.
@@ -31,7 +31,7 @@
 
 ## Commit & Pull Request Guidelines
 - This repo does not include Git history or a formal commit convention.
-  - Use short, imperative commit subjects (example: “Add runtime health check endpoint”).
+  - Use short, imperative commit subjects (example: â€œAdd runtime health check endpointâ€).
 - PRs should include:
   - Clear summary and scope.
   - Test status (commands run and results).

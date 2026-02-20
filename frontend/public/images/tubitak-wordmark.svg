@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 140" role="img" aria-label="TUBITAK">
+  <defs>
+    <linearGradient id="tubitakGlow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f7f7f7" stop-opacity="0.95"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="1" stop-color="#e5e5e5" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="520" height="140" fill="none"/>
+  <g fill="url(#tubitakGlow)">
+    <path d="M12 40h46v12H41v48H29V52H12z"/>
+    <path d="M78 40h12v60H78z"/>
+    <path d="M115 40h42c18 0 29 10 29 26 0 16-11 26-29 26h-42zM127 52v40h28c10 0 17-6 17-20 0-14-7-20-17-20z"/>
+    <path d="M210 40h12v36c0 10 6 17 18 17 12 0 18-7 18-17V40h12v37c0 18-12 30-30 30-18 0-30-12-30-30z"/>
+    <path d="M285 40h58v12h-23v48h-12V52h-23z"/>
+    <path d="M363 40h12v60h-12z"/>
+    <path d="M400 40h12v24l26-24h16l-28 26 30 34h-16l-22-26-6 6v20h-12z"/>
+  </g>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2">
+    <rect x="6" y="6" width="508" height="128" rx="18"/>
+  </g>
+</svg>

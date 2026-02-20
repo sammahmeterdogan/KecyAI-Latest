@@ -1,767 +1,662 @@
 <div id="pwb-body-wrap">
-    <div id="iachm" class="pw-block-style"></div>
-    <div id="iachm-2" class="pw-block-style"><img src="images/noise-optimized-2.jpg" loading="eager" id="it72t-2-2"
-        class="pw-image-style"><img src="images/nosie-texture-busier.jpg" loading="eager" id="it72t-3"
-        class="pw-image-style"></div>
-    <div id="iutd">
-      <div id="ihvf" class="pw-scene-style pwb-scene"></div>
+  <div id="iachm" class="pw-block-style"></div>
+  <div id="iachm-2" class="pw-block-style"><img src="images/noise-optimized-2.jpg" loading="eager" id="it72t-2-2"
+      class="pw-image-style"><img src="images/nosie-texture-busier.jpg" loading="eager" id="it72t-3"
+      class="pw-image-style"></div>
+  <div id="iutd">
+    <div id="ihvf" class="pw-scene-style pwb-scene"></div>
+  </div>
+  <div id="ia8ba" class="pw-block-style">
+    <div id="iu2co" class="pw-image-style" onclick="window.location.href='/'"
+      style="display: flex; align-items: center; font-family: 'pptelegraf-regular', sans-serif; font-weight: 700; font-size: 22px; color: #f0f3f3; white-space: nowrap; cursor: pointer; height: 32px;">
+      KECY AI
     </div>
-    <div id="ia8ba" class="pw-block-style">
-      <div id="iu2co" class="pw-image-style" onclick="window.location.href='/'"
-        style="display: flex; align-items: center; font-family: 'pptelegraf-regular', sans-serif; font-weight: 700; font-size: 22px; color: #f0f3f3; white-space: nowrap; cursor: pointer; height: 32px;">
-        KECY AI
+    <script>
+      (function () {
+        const el = document.getElementById('iu2co');
+        const target = 'KECY AI';
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*+?/';
+        let interval = null;
+
+        function scramble() {
+          let iteration = 0;
+          clearInterval(interval);
+          interval = setInterval(() => {
+            el.innerText = target
+              .split('')
+              .map((letter, index) => {
+                if (index < iteration) {
+                  return target[index];
+                }
+                return chars[Math.floor(Math.random() * chars.length)];
+              })
+              .join('');
+
+            if (iteration >= target.length) {
+              clearInterval(interval);
+            }
+            iteration += 1 / 3;
+          }, 40);
+        }
+
+        // Run on load
+        scramble();
+
+        // Re-run on hover
+        el.onmouseenter = event => {
+          scramble();
+        };
+      })();
+    </script>
+    <div id="iji2n-3-4-2" data-has-states="1" class="pw-block-style" style="cursor: pointer;"
+      onclick="window.location.href='platform/'">
+      <p id="ivkpg-3-4-2" data-has-states="1" class="pw-text-style">Launch App</p><img src="images/buttons.png"
+        loading="eager" id="iu2co-2-6-4-2" class="pw-image-style">
+    </div>
+    <div id="iji2n-3-3" class="pw-block-style">
+      <p id="ivkpg-3-3" class="pw-text-style">Launch App</p><img src="images/buttons_1.png" loading="lazy"
+        id="iu2co-2-6-3" class="pw-image-style">
+    </div>
+  </div>
+  <div id="i10n4h" class="pw-anchor-style pwb-anchor"></div>
+  <div id="ilojm" class="pw-block-style">
+    <div id="i77il" class="pw-block-style">
+      <h2 id="ikfl1" class="pw-text-style">KECY AI: Web Tabanlı Açık Kaynaklı Robotik Eğitim Platformu</h2>
+      <p id="iwckh" class="pw-text-style">SO-ARM101 (6DOF) robot kolu ile simülasyon, hareket planlama (MoveIt2) ve
+        fiziksel yürütmeyi tek bir akışta birleştirir. Tarayıcı tabanlı arayüz sayesinde Linux/terminal bariyerini
+        azaltır; eğitimden Ar-Ge’ye ölçeklenebilir bir ekosistem sunar.</p>
+      <div id="i9litd" class="pw-block-style" style="justify-content: center; gap: 14px;">
+        <div id="iji2n-3-4" data-has-states="1" class="pw-block-style" style="cursor: pointer;"
+          onclick="window.location.href='/kecy/platform'">
+          <p id="ivkpg-3-4" data-has-states="1" class="pw-text-style">Platformu Gez</p><img src="images/buttons.png"
+            loading="eager" id="iu2co-2-6-4" class="pw-image-style">
+        </div>
+        <div id="iji2n-3-4-docs" data-has-states="1" class="pw-block-style" style="cursor: pointer;"
+          onclick="window.location.href='/documents'">
+          <p id="ivkpg-3-4-docs" data-has-states="1" class="pw-text-style">Dökümanlar</p><img src="images/buttons.png"
+            loading="eager" id="iu2co-2-6-4-docs" class="pw-image-style">
+        </div>
       </div>
-      <script>
-        (function () {
-          const el = document.getElementById('iu2co');
-          const target = 'KECY AI';
-          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*+?/';
-          let interval = null;
+      <style>
+        #iji2n-3-4-docs {
+          width: revert;
+          min-height: revert;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          background-color: #00000066;
+          backdrop-filter: blur(5px);
+          transition: all 300ms ease-in-out 0ms;
+          border-radius: 8px;
+          overflow: hidden;
+          position: relative;
+          pointer-events: auto;
+          height: 50px;
+        }
 
-          function scramble() {
-            let iteration = 0;
-            clearInterval(interval);
-            interval = setInterval(() => {
-              el.innerText = target
-                .split('')
-                .map((letter, index) => {
-                  if (index < iteration) {
-                    return target[index];
-                  }
-                  return chars[Math.floor(Math.random() * chars.length)];
-                })
-                .join('');
+        #iji2n-3-4-docs:hover {
+          box-shadow: 0px 4px 40px #ccbae480;
+          backdrop-filter: revert;
+        }
 
-              if (iteration >= target.length) {
-                clearInterval(interval);
-              }
-              iteration += 1 / 3;
-            }, 40);
+        #ivkpg-3-4-docs {
+          position: absolute;
+          font-family: "berkeleymonotrial-regular";
+          text-transform: none;
+          letter-spacing: 0.02em;
+          color: #000000;
+          font-size: 14px;
+          transition: all 300ms ease-in-out 0ms;
+          z-index: 2;
+          text-align: center;
+          padding-top: 20px;
+          padding-bottom: 20px;
+          border-radius: 0px;
+          overflow: hidden;
+        }
+
+        #ivkpg-3-4-docs:hover {
+          background-color: #000000d9;
+          color: #cecafb;
+        }
+
+        #iu2co-2-6-4-docs {
+          height: revert;
+          width: 160px;
+          object-fit: fill;
+          position: relative;
+          z-index: 0;
+          border-radius: 6px;
+          overflow: hidden;
+        }
+
+        @media (max-width: 480px) {
+          #ivkpg-3-4-docs {
+            font-size: 12px;
+            padding-top: 14px;
+            padding-bottom: 14px;
           }
 
-          // Run on load
-          scramble();
-
-          // Re-run on hover
-          el.onmouseenter = event => {
-            scramble();
-          };
-        })();
-      </script>
-      <div id="iji2n-3-4-2" data-has-states="1" class="pw-block-style" style="cursor: pointer;"
-        onclick="window.location.href='platform/'">
-        <p id="ivkpg-3-4-2" data-has-states="1" class="pw-text-style">Launch App</p><img src="images/buttons.png"
-          loading="eager" id="iu2co-2-6-4-2" class="pw-image-style">
-      </div>
-      <div id="iji2n-3-3" class="pw-block-style">
-        <p id="ivkpg-3-3" class="pw-text-style">Launch App</p><img src="images/buttons_1.png" loading="lazy"
-          id="iu2co-2-6-3" class="pw-image-style">
-      </div>
+          #iu2co-2-6-4-docs {
+            width: 120px;
+          }
+        }
+      </style>
     </div>
-    <div id="i10n4h" class="pw-anchor-style pwb-anchor"></div>
-    <div id="ilojm" class="pw-block-style">
-      <div id="i77il" class="pw-block-style">
-        <h2 id="ikfl1" class="pw-text-style">KECY AI: Web Tabanlı Açık Kaynaklı Robotik Eğitim Platformu</h2>
-        <p id="iwckh" class="pw-text-style">SO-ARM101 (6DOF) robot kolu ile simülasyon, hareket planlama (MoveIt2) ve
-          fiziksel yürütmeyi tek bir akışta birleştirir. Tarayıcı tabanlı arayüz sayesinde Linux/terminal bariyerini
-          azaltır; eğitimden Ar-Ge’ye ölçeklenebilir bir ekosistem sunar.</p>
-        <div id="i9litd" class="pw-block-style" style="justify-content: center;">
-          <div id="iji2n-3-4" data-has-states="1" class="pw-block-style" style="cursor: pointer;"
-            onclick="window.location.href='/kecy/platform'">
-            <p id="ivkpg-3-4" data-has-states="1" class="pw-text-style">Platformu Gez</p><img src="images/buttons.png"
-              loading="eager" id="iu2co-2-6-4" class="pw-image-style">
-          </div>
-        </div>
-      </div>
-      <div id="iieh1" class="pw-block-style">
-        <div id="i77il-2" class="pw-block-style">
-          <div id="i2a4mi" class="pw-embed-style pwb-embed">
-            <div class="tenbin-tvl" id="tenbinTvlValue">$—</div>
+    <div id="iieh1" class="pw-block-style">
+      <div id="i77il-2" class="pw-block-style">
+        <div id="i2a4mi" class="pw-embed-style pwb-embed">
+          <div class="tenbin-tvl" id="tenbinTvlValue">$—</div>
 
-            <style>
-              @font-face {
-                font-family: "pptelegraf-regular";
-                src: url("fonts/pptelegraf-regular.otf") format("opentype");
-                font-weight: 400;
-                font-style: normal;
-                font-display: swap;
-              }
+          <style>
+            @font-face {
+              font-family: "pptelegraf-regular";
+              src: url("fonts/pptelegraf-regular.otf") format("opentype");
+              font-weight: 400;
+              font-style: normal;
+              font-display: swap;
+            }
 
+            .tenbin-tvl {
+              font-family: "pptelegraf-regular", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+              font-size: 64px;
+              /* desktop */
+              font-weight: 400;
+              letter-spacing: -0.03em;
+              line-height: 1;
+              color: #ffffff;
+              text-transform: none;
+            }
+
+            /* tablet */
+            @media (max-width: 991px) {
               .tenbin-tvl {
-                font-family: "pptelegraf-regular", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-                font-size: 64px;
-                /* desktop */
-                font-weight: 400;
-                letter-spacing: -0.03em;
-                line-height: 1;
-                color: #ffffff;
-                text-transform: none;
+                font-size: 32px;
               }
+            }
 
-              /* tablet */
-              @media (max-width: 991px) {
-                .tenbin-tvl {
-                  font-size: 32px;
-                }
+            /* mobile */
+            @media (max-width: 479px) {
+              .tenbin-tvl {
+                font-size: 48px;
               }
+            }
+          </style>
 
-              /* mobile */
-              @media (max-width: 479px) {
-                .tenbin-tvl {
-                  font-size: 48px;
-                }
-              }
-            </style>
-
-            <script>
-              (async () => {
-                const el = document.getElementById("tenbinTvlValue");
-                const URL = "/api/metrics/tvl";
-
-                const PREFIX = "$";
-
-                const round1 = (x) =>
-                  (Math.round(x * 10) / 10).toString().replace(/\.0$/, "");
-
-                const formatCompact = (n) => {
-                  if (n == null || Number.isNaN(Number(n))) return PREFIX + "—";
-                  const abs = Math.abs(Number(n));
-
-                  if (abs >= 1e12) return PREFIX + round1(abs / 1e12) + "t";
-                  if (abs >= 1e9) return PREFIX + round1(abs / 1e9) + "b";
-                  if (abs >= 1e6) return PREFIX + round1(abs / 1e6) + "m";
-                  if (abs >= 1e3) return PREFIX + round1(abs / 1e3) + "k";
-                  return PREFIX + Math.round(abs).toString();
-                };
-
-                const extractNumber = (json) => {
-                  if (typeof json === "number") return json;
-                  return json?.tvl ?? json?.value ?? json?.data?.tvl ?? json?.data?.value ?? null;
-                };
-
-                try {
-                  const res = await fetch(URL, { cache: "no-store" });
-                  const text = await res.text();
-                  const json = JSON.parse(text);
-
-                  const tvl = extractNumber(json);
-                  el.textContent = formatCompact(tvl);
-                } catch (err) {
-                  el.textContent = PREFIX + "—";
-                  console.error("TVL fetch failed:", err);
-                }
-              })();
-            </script>
-          </div>
-          <p id="iwckh-2" class="pw-text-style">TOTAL TVL</p>
+            <!-- Metrics fetch disabled (local-only build) -->
         </div>
-        <div id="i77il-2-2" class="pw-block-style">
-          <div id="i2a4mi-2" class="pw-embed-style pwb-embed">
-            <div class="tenbin-apy" id="tenbinApyValue">—%</div>
+        <p id="iwckh-2" class="pw-text-style">TOTAL TVL</p>
+      </div>
+      <div id="i77il-2-2" class="pw-block-style">
+        <div id="i2a4mi-2" class="pw-embed-style pwb-embed">
+          <div class="tenbin-apy" id="tenbinApyValue">—%</div>
 
-            <style>
-              @font-face {
-                font-family: "pptelegraf-regular";
-                src: url("fonts/pptelegraf-regular.otf") format("opentype");
-                font-weight: 400;
-                font-style: normal;
-                font-display: swap;
-              }
+          <style>
+            @font-face {
+              font-family: "pptelegraf-regular";
+              src: url("fonts/pptelegraf-regular.otf") format("opentype");
+              font-weight: 400;
+              font-style: normal;
+              font-display: swap;
+            }
 
+            .tenbin-apy {
+              font-family: "pptelegraf-regular", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+              font-size: 64px;
+              /* desktop */
+              font-weight: 400;
+              letter-spacing: -0.03em;
+              line-height: 1;
+              color: #ffffff;
+              text-transform: none;
+            }
+
+            /* tablet */
+            @media (max-width: 991px) {
               .tenbin-apy {
-                font-family: "pptelegraf-regular", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-                font-size: 64px;
-                /* desktop */
-                font-weight: 400;
-                letter-spacing: -0.03em;
-                line-height: 1;
-                color: #ffffff;
-                text-transform: none;
+                font-size: 32px;
               }
+            }
 
-              /* tablet */
-              @media (max-width: 991px) {
-                .tenbin-apy {
-                  font-size: 32px;
-                }
+            /* mobile */
+            @media (max-width: 479px) {
+              .tenbin-apy {
+                font-size: 48px;
               }
+            }
+          </style>
 
-              /* mobile */
-              @media (max-width: 479px) {
-                .tenbin-apy {
-                  font-size: 48px;
-                }
-              }
-            </style>
-
-            <script>
-              (async () => {
-                const el = document.getElementById("tenbinApyValue");
-                const URL = "/api/metrics/apy?asset=gold";
-
-                const round1 = (x) =>
-                  (Math.round(x * 10) / 10).toString().replace(/\.0$/, "");
-
-                const fmtPct = (n) => {
-                  if (n == null || Number.isNaN(Number(n))) return "—%";
-                  const num = Number(n);
-                  const pct = num <= 1 ? num * 100 : num; // supports 0.125 or 12.5
-                  return round1(pct) + "%";
-                };
-
-                const extractNumber = (json) => {
-                  if (typeof json === "number") return json;
-                  return json?.apy ?? json?.rate ?? json?.value ?? json?.data?.apy ?? json?.data?.value ?? null;
-                };
-
-                try {
-                  const res = await fetch(URL, { cache: "no-store" });
-                  const text = await res.text();
-                  const json = JSON.parse(text);
-
-                  const apy = extractNumber(json);
-                  el.textContent = fmtPct(apy);
-                } catch (err) {
-                  el.textContent = "—%";
-                  console.error("APY fetch failed:", err);
-                }
-              })();
-            </script>
-          </div>
-          <div id="iodfg" class="pw-block-style"><img src="images/asset-2-1.svg" loading="lazy" id="iu2co-2-2"
-              class="pw-image-style">
-            <p id="iwckh-2-2" class="pw-text-style"><a href="/" class="pw-text-style">KECY</a> GOLD apy</p>
-          </div>
+            <!-- Metrics fetch disabled (local-only build) -->
         </div>
-        <div id="i77il-2-3" class="pw-block-style">
-          <div id="i2a4mi-2-2" class="pw-embed-style pwb-embed">
-            <div class="tenbin-holders" id="tenbinHoldersValue">—</div>
+        <div id="iodfg" class="pw-block-style"><img src="images/asset-2-1.svg" loading="lazy" id="iu2co-2-2"
+            class="pw-image-style">
+          <p id="iwckh-2-2" class="pw-text-style"><a href="/" class="pw-text-style">KECY</a> GOLD apy</p>
+        </div>
+      </div>
+      <div id="i77il-2-3" class="pw-block-style">
+        <div id="i2a4mi-2-2" class="pw-embed-style pwb-embed">
+          <div class="tenbin-holders" id="tenbinHoldersValue">—</div>
 
-            <style>
-              @font-face {
-                font-family: "pptelegraf-regular";
-                src: url("fonts/pptelegraf-regular.otf") format("opentype");
-                font-weight: 400;
-                font-style: normal;
-                font-display: swap;
-              }
+          <style>
+            @font-face {
+              font-family: "pptelegraf-regular";
+              src: url("fonts/pptelegraf-regular.otf") format("opentype");
+              font-weight: 400;
+              font-style: normal;
+              font-display: swap;
+            }
 
+            .tenbin-holders {
+              font-family: "pptelegraf-regular", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+              font-size: 64px;
+              /* desktop */
+              font-weight: 400;
+              letter-spacing: -0.03em;
+              line-height: 1;
+              color: #ffffff;
+              text-transform: none;
+            }
+
+            /* tablet */
+            @media (max-width: 991px) {
               .tenbin-holders {
-                font-family: "pptelegraf-regular", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-                font-size: 64px;
-                /* desktop */
-                font-weight: 400;
-                letter-spacing: -0.03em;
-                line-height: 1;
-                color: #ffffff;
-                text-transform: none;
+                font-size: 32px;
               }
+            }
 
-              /* tablet */
-              @media (max-width: 991px) {
-                .tenbin-holders {
-                  font-size: 32px;
-                }
+            /* mobile */
+            @media (max-width: 479px) {
+              .tenbin-holders {
+                font-size: 48px;
               }
+            }
+          </style>
 
-              /* mobile */
-              @media (max-width: 479px) {
-                .tenbin-holders {
-                  font-size: 48px;
-                }
-              }
-            </style>
-
-            <script>
-              (async () => {
-                const el = document.getElementById("tenbinHoldersValue");
-                const URL = "/api/metrics/active-holders";
-
-                const round1 = (x) =>
-                  (Math.round(x * 10) / 10).toString().replace(/\.0$/, "");
-
-                const formatCompact = (n) => {
-                  if (n == null || Number.isNaN(Number(n))) return "—";
-                  const abs = Math.abs(Number(n));
-
-                  if (abs >= 1e12) return round1(abs / 1e12) + "t";
-                  if (abs >= 1e9) return round1(abs / 1e9) + "b";
-                  if (abs >= 1e6) return round1(abs / 1e6) + "m";
-                  if (abs >= 1e3) return round1(abs / 1e3) + "k";
-                  return Math.round(abs).toString();
-                };
-
-                const extractNumber = (json) => {
-                  if (typeof json === "number") return json;
-                  return (
-                    json?.activeHolders ??
-                    json?.holders ??
-                    json?.active_holders ??
-                    json?.value ??
-                    json?.data?.activeHolders ??
-                    json?.data?.value ??
-                    null
-                  );
-                };
-
-                try {
-                  const res = await fetch(URL, { cache: "no-store" });
-                  const text = await res.text();
-                  const json = JSON.parse(text);
-
-                  const holders = extractNumber(json);
-                  el.textContent = formatCompact(holders);
-                } catch (err) {
-                  el.textContent = "—";
-                  console.error("Active holders fetch failed:", err);
-                }
-              })();
-            </script>
-          </div>
-          <p id="iwckh-2-3" class="pw-text-style">active holders</p>
+            <!-- Metrics fetch disabled (local-only build) -->
         </div>
-        <div id="i77il-2-4" class="pw-block-style">
-          <div id="i2a4mi-2-2-2" class="pw-embed-style pwb-embed">
-            <div class="tenbin-redeem" id="tenbinRedeemValue">—</div>
+        <p id="iwckh-2-3" class="pw-text-style">active holders</p>
+      </div>
+      <div id="i77il-2-4" class="pw-block-style">
+        <div id="i2a4mi-2-2-2" class="pw-embed-style pwb-embed">
+          <div class="tenbin-redeem" id="tenbinRedeemValue">—</div>
 
-            <style>
-              @font-face {
-                font-family: "pptelegraf-regular";
-                src: url("fonts/pptelegraf-regular.otf") format("opentype");
-                font-weight: 400;
-                font-style: normal;
-                font-display: swap;
-              }
+          <style>
+            @font-face {
+              font-family: "pptelegraf-regular";
+              src: url("fonts/pptelegraf-regular.otf") format("opentype");
+              font-weight: 400;
+              font-style: normal;
+              font-display: swap;
+            }
 
+            .tenbin-redeem {
+              font-family: "pptelegraf-regular", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+              font-size: 64px;
+              /* desktop */
+              font-weight: 400;
+              letter-spacing: -0.03em;
+              line-height: 1;
+              color: #ffffff;
+              text-transform: none;
+              white-space: nowrap;
+            }
+
+            /* tablet */
+            @media (max-width: 991px) {
               .tenbin-redeem {
-                font-family: "pptelegraf-regular", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-                font-size: 64px;
-                /* desktop */
-                font-weight: 400;
-                letter-spacing: -0.03em;
-                line-height: 1;
-                color: #ffffff;
-                text-transform: none;
-                white-space: nowrap;
+                font-size: 32px;
               }
+            }
 
-              /* tablet */
-              @media (max-width: 991px) {
-                .tenbin-redeem {
-                  font-size: 32px;
-                }
+            /* mobile */
+            @media (max-width: 479px) {
+              .tenbin-redeem {
+                font-size: 48px;
               }
+            }
+          </style>
 
-              /* mobile */
-              @media (max-width: 479px) {
-                .tenbin-redeem {
-                  font-size: 48px;
-                }
-              }
-            </style>
+            <!-- Metrics fetch disabled (local-only build) -->
+        </div>
+        <p id="iwckh-2-4" class="pw-text-style">Redemption time</p>
+      </div>
+    </div>
+  </div>
+  <div id="irkm9" class="pw-block-style">
+    <div id="i77il-3" class="pw-block-style">
+      <h1 id="ikfl1-3" class="pw-text-style">Tek Akışta Robotik Uygulama</h1>
+      </h1>
 
-            <script>
-              (async () => {
-                const el = document.getElementById("tenbinRedeemValue");
-                const URL = "/api/metrics/redemption-time";
-
-                const round0 = (x) => Math.round(Number(x));
-
-                const fmtTime = (seconds) => {
-                  const s = round0(seconds);
-                  if (!Number.isFinite(s)) return "—";
-                  if (s < 60) return `${s}s`;
-                  const m = Math.round(s / 60);
-                  return `${m}m`;
-                };
-
-                try {
-                  const res = await fetch(URL, { cache: "no-store" });
-                  const text = await res.text();
-                  const json = JSON.parse(text);
-
-                  const blocks =
-                    json?.averageBlocks ??
-                    json?.blocks ??
-                    json?.value ??
-                    null;
-
-                  const seconds =
-                    json?.averageSeconds ??
-                    json?.seconds ??
-                    null;
-
-                  // Prefer blocks (to match your UI: "2 Blocks")
-                  if (blocks != null && Number.isFinite(Number(blocks))) {
-                    el.textContent = `${round0(blocks)} Blocks`;
-                    return;
-                  }
-
-                  // Fallback: show minutes/seconds if blocks missing
-                  if (seconds != null && Number.isFinite(Number(seconds))) {
-                    el.textContent = fmtTime(seconds);
-                    return;
-                  }
-
-                  el.textContent = "—";
-                } catch (err) {
-                  el.textContent = "—";
-                  console.error("Redemption time fetch failed:", err);
-                }
-              })();
-            </script>
-          </div>
-          <p id="iwckh-2-4" class="pw-text-style">Redemption time</p>
+      <p id="iwckh-3" class="pw-text-style">Eğitim kitlerinin oyuncak sınıfı sınırlarını ve endüstriyel kolların
+        yüksek maliyetini aşan bir fiyat/performans yaklaşımıyla; veri toplama, simülasyon, hareket planlama ve gerçek
+        robot üzerinde yürütmeyi bütünleşik şekilde sunar.</p>
+    </div>
+    <div id="i77il-2-2-2" class="pw-block-style">
+      <div id="iodfg-2" class="pw-block-style"
+        style="display: flex; justify-content: space-around; width: 100%; margin-bottom: 15px;">
+        <p class="pw-text-style" style="font-weight: 700; color: #fff; font-size: 18px; text-align: center; flex: 1;">
+          KECY AI</p>
+        <p class="pw-text-style" style="font-weight: 700; color: #999; font-size: 18px; text-align: center; flex: 1;">
+          Geleneksel</p>
+      </div>
+      <div id="i190k" class="pw-block-style"></div>
+      <div id="isfjp" class="pw-block-style">
+        <div id="iodfg-2-2" class="pw-block-style">
+          <p id="iwckh-2-2-2-2" class="pw-text-style" style="font-size: 16px; line-height: 1.2;">Kurulum / Başlangıç
+          </p>
+        </div>
+        <div id="iodfg-2-2-2" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-3-5" class="pw-text-style"
+            style="font-size: 16px; line-height: 1.2; white-space: normal;">Web + Docker + noVNC</p>
+        </div>
+        <div id="iodfg-2-2-3" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-3" class="pw-text-style" style="font-size: 16px; line-height: 1.2; white-space: normal;">
+            Parçalı / Zor Kurulum</p>
+        </div>
+      </div>
+      <div id="i190k-2" class="pw-block-style"></div>
+      <div id="isfjp-2" class="pw-block-style">
+        <div id="iodfg-2-2-4" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-2" class="pw-text-style" style="font-size: 16px; line-height: 1.2;">Eğitim İçeriği</p>
+        </div>
+        <div id="iodfg-2-2-2-2" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-3-2-2" class="pw-text-style"
+            style="font-size: 16px; line-height: 1.2; white-space: normal;">6DOF, Dijital İkiz, MoveIt2</p>
+        </div>
+        <div id="iodfg-2-2-3-2" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-3-2" class="pw-text-style"
+            style="font-size: 16px; line-height: 1.2; white-space: normal;">Kural Bazlı / Sınırlı</p>
+        </div>
+      </div>
+      <div id="i190k-3" class="pw-block-style"></div>
+      <div id="isfjp-3" class="pw-block-style">
+        <div id="iodfg-2-2-5" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-4" class="pw-text-style" style="font-size: 16px; line-height: 1.2;">Araç Zinciri</p>
+        </div>
+        <div id="iodfg-2-2-2-3" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-3-3-2" class="pw-text-style"
+            style="font-size: 16px; line-height: 1.2; white-space: normal;">Tek Platform, Uçtan Uca</p>
+        </div>
+        <div id="iodfg-2-2-3-3" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-3-3" class="pw-text-style"
+            style="font-size: 16px; line-height: 1.2; white-space: normal;">Farklı Araçlar, Kopuk</p>
+        </div>
+      </div>
+      <div id="i190k-4" class="pw-block-style"></div>
+      <div id="isfjp-4-2" class="pw-block-style">
+        <div id="iodfg-2-2-6-2" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-5-2" class="pw-text-style" style="font-size: 16px; line-height: 1.2;">Veri ve Yapay
+            Zeka</p>
+        </div>
+        <div id="iodfg-2-2-2-4-2" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-3-4-2-2" class="pw-text-style">
+            LeRobot / İmitasyon</p>
+        </div>
+        <div id="iodfg-2-2-3-4-2" class="pw-block-style">
+          <p id="iwckh-2-2-2-2-3-4-3" class="pw-text-style"
+            style="font-size: 16px; line-height: 1.2; white-space: normal;">Veri/ML Entegrasyonu Zor</p>
         </div>
       </div>
     </div>
-    <div id="irkm9" class="pw-block-style">
-      <div id="i77il-3" class="pw-block-style">
-        <h1 id="ikfl1-3" class="pw-text-style">Tek Akışta Robotik Uygulama</h1>
-        </h1>
-
-        <p id="iwckh-3" class="pw-text-style">Eğitim kitlerinin oyuncak sınıfı sınırlarını ve endüstriyel kolların
-          yüksek maliyetini aşan bir fiyat/performans yaklaşımıyla; veri toplama, simülasyon, hareket planlama ve gerçek
-          robot üzerinde yürütmeyi bütünleşik şekilde sunar.</p>
-      </div>
-      <div id="i77il-2-2-2" class="pw-block-style">
-        <div id="iodfg-2" class="pw-block-style"
-          style="display: flex; justify-content: space-around; width: 100%; margin-bottom: 15px;">
-          <p class="pw-text-style" style="font-weight: 700; color: #fff; font-size: 18px; text-align: center; flex: 1;">
-            KECY AI</p>
-          <p class="pw-text-style" style="font-weight: 700; color: #999; font-size: 18px; text-align: center; flex: 1;">
-            Geleneksel</p>
-        </div>
-        <div id="i190k" class="pw-block-style"></div>
-        <div id="isfjp" class="pw-block-style">
-          <div id="iodfg-2-2" class="pw-block-style">
-            <p id="iwckh-2-2-2-2" class="pw-text-style" style="font-size: 16px; line-height: 1.2;">Kurulum / Başlangıç
-            </p>
-          </div>
-          <div id="iodfg-2-2-2" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-3-5" class="pw-text-style"
-              style="font-size: 16px; line-height: 1.2; white-space: normal;">Web + Docker + noVNC</p>
-          </div>
-          <div id="iodfg-2-2-3" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-3" class="pw-text-style"
-              style="font-size: 16px; line-height: 1.2; white-space: normal;">Parçalı / Zor Kurulum</p>
-          </div>
-        </div>
-        <div id="i190k-2" class="pw-block-style"></div>
-        <div id="isfjp-2" class="pw-block-style">
-          <div id="iodfg-2-2-4" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-2" class="pw-text-style" style="font-size: 16px; line-height: 1.2;">Eğitim İçeriği</p>
-          </div>
-          <div id="iodfg-2-2-2-2" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-3-2-2" class="pw-text-style"
-              style="font-size: 16px; line-height: 1.2; white-space: normal;">6DOF, Dijital İkiz, MoveIt2</p>
-          </div>
-          <div id="iodfg-2-2-3-2" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-3-2" class="pw-text-style"
-              style="font-size: 16px; line-height: 1.2; white-space: normal;">Kural Bazlı / Sınırlı</p>
-          </div>
-        </div>
-        <div id="i190k-3" class="pw-block-style"></div>
-        <div id="isfjp-3" class="pw-block-style">
-          <div id="iodfg-2-2-5" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-4" class="pw-text-style" style="font-size: 16px; line-height: 1.2;">Araç Zinciri</p>
-          </div>
-          <div id="iodfg-2-2-2-3" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-3-3-2" class="pw-text-style"
-              style="font-size: 16px; line-height: 1.2; white-space: normal;">Tek Platform, Uçtan Uca</p>
-          </div>
-          <div id="iodfg-2-2-3-3" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-3-3" class="pw-text-style"
-              style="font-size: 16px; line-height: 1.2; white-space: normal;">Farklı Araçlar, Kopuk</p>
-          </div>
-        </div>
-        <div id="i190k-4" class="pw-block-style"></div>
-        <div id="isfjp-4-2" class="pw-block-style">
-          <div id="iodfg-2-2-6-2" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-5-2" class="pw-text-style" style="font-size: 16px; line-height: 1.2;">Veri ve Yapay
-              Zeka</p>
-          </div>
-          <div id="iodfg-2-2-2-4-2" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-3-4-2-2" class="pw-text-style">
-              LeRobot / İmitasyon</p>
-          </div>
-          <div id="iodfg-2-2-3-4-2" class="pw-block-style">
-            <p id="iwckh-2-2-2-2-3-4-3" class="pw-text-style"
-              style="font-size: 16px; line-height: 1.2; white-space: normal;">Veri/ML Entegrasyonu Zor</p>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div id="i10n4h-2" class="pw-anchor-style pwb-anchor"></div>
-    <div id="i4epei" class="pw-block-style"></div>
-    <div id="i4epei-2" class="pw-block-style"></div>
-    <div id="i10n4h-2-2" class="pw-anchor-style pwb-anchor"></div>
-    <div id="iac8kg" class="pw-block-style">
-      <div id="ilojm-2" class="pw-block-style">
-        <div id="i77il-4" class="pw-block-style">
-          <h1 id="ikfl1-4" class="pw-text-style">Eğitim ve Ar-Ge için tasarlandı</h1>
-          <div id="ihxpev" class="pw-block-style">
-            <div id="i77il-2-5" class="pw-block-style"><img src="images/vault.svg" loading="lazy" id="iu2co-2-4-3"
-                class="pw-image-style">
-              <div id="iwx2dm-2" class="pw-block-style">
-                <p id="iwckh-2-5" class="pw-text-style">Donanım altyapısı:</p>
-                <div id="iwx2dm" class="pw-block-style">
-                  <p class="pw-text-style" style="font-size: 16px; line-height: 1.3; color: #fff; margin-top: 5px;">
-                    STS3215 Akıllı Servo + Modüler Set</p>
-                </div>
+  </div>
+  <div id="i10n4h-2" class="pw-anchor-style pwb-anchor"></div>
+  <div id="i4epei" class="pw-block-style"></div>
+  <div id="i4epei-2" class="pw-block-style"></div>
+  <div id="i10n4h-2-2" class="pw-anchor-style pwb-anchor"></div>
+  <div id="iac8kg" class="pw-block-style">
+    <div id="ilojm-2" class="pw-block-style">
+      <div id="i77il-4" class="pw-block-style">
+        <h1 id="ikfl1-4" class="pw-text-style">Eğitim ve Ar-Ge için tasarlandı</h1>
+        <div id="ihxpev" class="pw-block-style">
+          <div id="i77il-2-5" class="pw-block-style"><img src="images/vault.svg" loading="lazy" id="iu2co-2-4-3"
+              class="pw-image-style">
+            <div id="iwx2dm-2" class="pw-block-style">
+              <p id="iwckh-2-5" class="pw-text-style">Donanım altyapısı:</p>
+              <div id="iwx2dm" class="pw-block-style">
+                <p class="pw-text-style" style="font-size: 16px; line-height: 1.3; color: #fff; margin-top: 5px;">
+                  STS3215 Akıllı Servo + Modüler Set</p>
               </div>
             </div>
-            <div id="i77il-2-5-2" class="pw-block-style"><img src="images/shield.svg" loading="lazy" id="iu2co-2-4-3-2"
-                class="pw-image-style">
-              <div id="iwx2dm-2-2" class="pw-block-style">
-                <p id="iwckh-2-5-4-2" class="pw-text-style">Açık kaynak SO-ARM101 ekosistemi ile eğitimden Ar-Ge’ye
-                  ölçeklenen robotik platform.</p>
-                <div id="iwx2dm-3" class="pw-block-style">
-                  <p class="pw-text-style" style="font-size: 16px; line-height: 1.3; color: #fff; margin-top: 5px;">Web
-                    UI + Docker + ROS2 + LeRobot (İmitasyon)</p>
-                </div>
+          </div>
+          <div id="i77il-2-5-2" class="pw-block-style"><img src="images/shield.svg" loading="lazy" id="iu2co-2-4-3-2"
+              class="pw-image-style">
+            <div id="iwx2dm-2-2" class="pw-block-style">
+              <p id="iwckh-2-5-4-2" class="pw-text-style">Açık kaynak SO-ARM101 ekosistemi ile eğitimden Ar-Ge’ye
+                ölçeklenen robotik platform.</p>
+              <div id="iwx2dm-3" class="pw-block-style">
+                <p class="pw-text-style" style="font-size: 16px; line-height: 1.3; color: #fff; margin-top: 5px;">Web
+                  UI + Docker + ROS2 + LeRobot (İmitasyon)</p>
               </div>
             </div>
-
           </div>
+
         </div>
       </div>
     </div>
-    <div id="i10n4h-2-2-2" class="pw-anchor-style pwb-anchor"></div>
-    <div id="i4epei-2-2" class="pw-block-style"></div>
-    <div id="i10n4h-2-2-2-3" class="pw-anchor-style pwb-anchor"></div>
-    <div id="irkm9-3" class="pw-block-style">
-      <div id="i77il-3-3" class="pw-block-style">
-        <h1 id="ikfl1-3-3" class="pw-text-style">KECY AI</h1>
-        <p id="iwckh-3-3" class="pw-text-style">Eğitimden üretime eksiksiz çözüm</p>
-      </div>
+  </div>
+  <div id="i10n4h-2-2-2" class="pw-anchor-style pwb-anchor"></div>
+  <div id="i4epei-2-2" class="pw-block-style"></div>
+  <div id="i10n4h-2-2-2-3" class="pw-anchor-style pwb-anchor"></div>
+  <div id="irkm9-3" class="pw-block-style">
+    <div id="i77il-3-3" class="pw-block-style">
+      <h1 id="ikfl1-3-3" class="pw-text-style">KECY AI</h1>
+      <p id="iwckh-3-3" class="pw-text-style">Eğitimden üretime eksiksiz çözüm</p>
+    </div>
       <div id="iv737n" class="pw-block-style">
-        <div id="isqfbh" class="pw-embed-style pwb-embed"><iframe src="https://technical-choices-547262.framer.app/"
-            width="100%" height="748" style="border:0; overflow:visible;" allow="fullscreen" loading="lazy"
-            referrerpolicy="no-referrer-when-downgrade"></iframe></div>
-      </div>
-    </div>
-    <div id="ilojm-2-2" class="pw-block-style">
-      <div id="i77il-4-2" class="pw-block-style">
-        <div id="ihxpev-2" class="pw-block-style">
-          <div id="i77il-2-5-4" class="pw-block-style">
-            <p id="iwckh-2-5-4" class="pw-text-style">EKOSİSTEM ve TOPLULUK</p>
-            <div id="iwx2dm-5" class="pw-block-style"><img src="images/galaxy.svg" loading="lazy" id="iu2co-2-4-6"
-                class="pw-image-style"><img src="images/wintermute-ventures-h-1.svg" loading="lazy" id="iu2co-2-4-2-3"
-                class="pw-image-style"><img src="images/falconx-logo-white-1.svg" loading="lazy" id="iu2co-2-4-2-3-2"
-                class="pw-image-style"><img src="images/jpeg.svg" loading="lazy" id="iu2co-2-4-2-3-3"
-                class="pw-image-style"><img src="images/nascent.svg" loading="lazy" id="iu2co-2-4-2-3-4"
-                class="pw-image-style"></div>
-            <div id="iwx2dm-5-2" class="pw-block-style"><img src="images/primitive-multiple-logo-2.svg" loading="lazy"
-                id="iu2co-2-4-2-3-5" class="pw-image-style"><img src="images/archetype.svg" loading="lazy"
-                id="iu2co-2-4-6-2" class="pw-image-style"><img src="images/reverie.svg" loading="lazy"
-                id="iu2co-2-4-2-3-6" class="pw-image-style"><img src="images/bankless.svg" loading="lazy"
-                id="iu2co-2-4-2-3-2-2" class="pw-image-style"><img src="images/gsr-logo-beige-rgb1-2-1.svg"
-                loading="lazy" id="iu2co-2-4-2-3-3-2" class="pw-image-style"><img src="images/alpen.svg" loading="lazy"
-                id="iu2co-2-4-2-3-4-2" class="pw-image-style"></div>
-            <div id="iwx2dm-5-2-2" class="pw-block-style"><img src="images/primitive-multiple-logo-2-1.svg"
-                loading="lazy" id="iu2co-2-4-2-3-5-2-2" class="pw-image-style"><img src="images/fenbushi-white-1.svg"
-                loading="lazy" id="iu2co-2-4-6-2-2" class="pw-image-style"><img
-                src="images/uniswap-horizontallogo-white-1.svg" loading="lazy" id="iu2co-2-4-2-3-6-2"
-                class="pw-image-style"></div>
+        <div id="isqfbh" class="pw-embed-style pwb-embed"
+          style="display:flex; align-items:center; justify-content:center; min-height:360px; border:1px dashed rgba(240,243,243,0.2); border-radius:16px;">
+          <div style="text-align:center;">
+            <p class="pw-text-style" style="font-size:16px; color:#cecafb; margin-bottom:6px;">Demo İçerik</p>
+            <p class="pw-text-style" style="font-size:12px; color:#7a7a7a;">Harici iframe kaldırıldı.</p>
           </div>
         </div>
       </div>
-    </div>
-    <div id="i10n4h-2-2-2-2" class="pw-anchor-style pwb-anchor"></div>
-    <div id="ilojm-3" class="pw-block-style">
-      <div id="i77il-5" class="pw-block-style">
-        <h1 id="ikfl1-5" class="pw-text-style">Eğitim ve Ar-Ge için ölçeklenebilir robotik platform.</h1>
-        <div id="ihr0td" class="pw-block-style">
-          <div id="iji2n-3-4-4" data-has-states="1" class="pw-block-style" style="cursor: pointer;"
-            onclick="window.location.href='/kecy/platform'">
-            <p id="ivkpg-3-4-4-2" data-has-states="1" class="pw-text-style">Platformu Gez</p><img
-              src="images/buttons.png" loading="eager" id="iu2co-2-6-4-4" class="pw-image-style">
-          </div>
-        </div>
-      </div>
-      <div id="ia8ba-2" class="pw-block-style"><img src="images/logo.svg" loading="lazy" id="iu2co-3"
-          class="pw-image-style">
-        <div id="ixnjci" class="pw-block-style">
-          <div id="i4z5ls" class="pw-block-style">
-            <p id="ivkpg-2-2-2" data-has-states="1" class="pw-text-style" style="cursor: pointer;"
-              onclick="window.location.href='kit/'">KİT DETAYLARI<br id="ihtko-2-2"></p>
-            <p id="ivkpg-2-2-2-2" data-has-states="1" class="pw-text-style" style="cursor: pointer;"
-              onclick="window.location.href='docs.html'">DÖKÜMANTASYON<br id="ihtko-2-2-2"></p>
-            <p id="ivkpg-2-2-2-3" data-has-states="1" class="pw-text-style" style="cursor: pointer;"
-              onclick="window.location.href='platform/'">PLATFORM</p>
-          </div>
-          <div id="inffsj" class="pw-block-style"><img src="images/x-logo-2023-original.svg" loading="lazy" id="iu2co-2"
-              class="pw-image-style"><img src="images/telegram-black-logo.svg" loading="lazy" id="iu2co-2-5"
-              class="pw-image-style"><img src="images/github.svg" loading="lazy" id="iu2co-2-7" class="pw-image-style">
+  </div>
+  <div id="ilojm-2-2" class="pw-block-style">
+    <div id="i77il-4-2" class="pw-block-style">
+      <div id="ihxpev-2" class="pw-block-style">
+        <div id="i77il-2-5-4" class="pw-block-style">
+          <p id="iwckh-2-5-4" class="pw-text-style">EKOSİSTEM ve TOPLULUK</p>
+          <div id="iwx2dm-5" class="pw-block-style"
+            style="display: flex; justify-content: center; align-items: center; margin-top: 22px;">
+            <img src="images/tubitak-wordmark.svg" loading="lazy" id="tubitak-logo" class="pw-image-style"
+              style="width: 240px; max-width: 70vw; height: auto; filter: drop-shadow(0 6px 18px rgba(255,255,255,0.25));">
           </div>
         </div>
       </div>
     </div>
   </div>
-  <div id="pwb-loading-wrap">
-    <div id="i79bc">
-      <div id="iuke7o-2" class="pw-embed-style pwb-embed">
-        <div id="pw-loader">
-          <div id="pw-loader-mark">
-            <svg id="pw-loader-svg" viewBox="0 0 300 300" aria-hidden="true">
-              <defs>
-                <!-- High Density / Small Dots Pattern -->
-                <pattern id="pwDots" width="4" height="4" patternUnits="userSpaceOnUse">
-                  <circle cx="2" cy="2" r="0.85" fill="#fff" opacity="0.95"></circle>
-                </pattern>
+  <div id="i10n4h-2-2-2-2" class="pw-anchor-style pwb-anchor"></div>
+  <div id="ilojm-3" class="pw-block-style">
+    <div id="i77il-5" class="pw-block-style">
+      <h1 id="ikfl1-5" class="pw-text-style">Eğitim ve Ar-Ge için ölçeklenebilir robotik platform.</h1>
+      <div id="ihr0td" class="pw-block-style">
+        <div id="iji2n-3-4-4" data-has-states="1" class="pw-block-style" style="cursor: pointer;"
+          onclick="window.location.href='/kecy/platform'">
+          <p id="ivkpg-3-4-4-2" data-has-states="1" class="pw-text-style">Platformu Gez</p><img src="images/buttons.png"
+            loading="eager" id="iu2co-2-6-4-4" class="pw-image-style">
+        </div>
+      </div>
+    </div>
+    <div id="ia8ba-2" class="pw-block-style"><img src="images/logo.svg" loading="lazy" id="iu2co-3"
+        class="pw-image-style">
+      <div id="ixnjci" class="pw-block-style">
+        <div id="i4z5ls" class="pw-block-style">
+          <p id="ivkpg-2-2-2" data-has-states="1" class="pw-text-style" style="cursor: pointer;"
+            onclick="window.location.href='kit/'">KİT DETAYLARI<br id="ihtko-2-2"></p>
+          <p id="ivkpg-2-2-2-2" data-has-states="1" class="pw-text-style" style="cursor: pointer;"
+            onclick="window.location.href='docs.html'">DÖKÜMANTASYON<br id="ihtko-2-2-2"></p>
+          <p id="ivkpg-2-2-2-3" data-has-states="1" class="pw-text-style" style="cursor: pointer;"
+            onclick="window.location.href='platform/'">PLATFORM</p>
+        </div>
+        <div id="inffsj" class="pw-block-style"><img src="images/x-logo-2023-original.svg" loading="lazy" id="iu2co-2"
+            class="pw-image-style"><img src="images/telegram-black-logo.svg" loading="lazy" id="iu2co-2-5"
+            class="pw-image-style"><img src="images/github.svg" loading="lazy" id="iu2co-2-7" class="pw-image-style">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="pwb-loading-wrap">
+  <div id="i79bc">
+    <div id="iuke7o-2" class="pw-embed-style pwb-embed">
+      <div id="pw-loader">
+        <div id="pw-loader-mark">
+          <svg id="pw-loader-svg" viewBox="0 0 300 300" aria-hidden="true">
+            <defs>
+              <!-- High Density / Small Dots Pattern -->
+              <pattern id="pwDots" width="4" height="4" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="0.85" fill="#fff" opacity="0.95"></circle>
+              </pattern>
 
-                <!-- Blur Filter for Soft Animation Edges -->
-                <filter id="pwBlur">
-                  <feGaussianBlur stdDeviation="16"></feGaussianBlur>
-                </filter>
+              <!-- Blur Filter for Soft Animation Edges -->
+              <filter id="pwBlur">
+                <feGaussianBlur stdDeviation="16"></feGaussianBlur>
+              </filter>
 
-                <!-- Animation Mask -->
-                <mask id="pwRingMask">
-                  <rect width="300" height="300" fill="black"></rect>
+              <!-- Animation Mask -->
+              <mask id="pwRingMask">
+                <rect width="300" height="300" fill="black"></rect>
 
-                  <!-- Outer Ring Collapsing -->
-                  <circle cx="150" cy="150" r="175" fill="white" filter="url(#pwBlur)" opacity="0.75">
-                    <animate attributeName="r" dur="4.8s" repeatCount="1" values="175; 18" keyTimes="0; 1"
-                      calcMode="spline" keySplines="0.59 0.25 0.12 1" fill="freeze"></animate>
-                    <animate attributeName="opacity" dur="4.8s" repeatCount="1" values="0.65; 1; 0.15"
-                      keyTimes="0; 0.55; 1" calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" fill="freeze">
-                    </animate>
-                  </circle>
-
-                  <!-- Center Anchor Expanding -->
-                  <circle cx="150" cy="150" r="52" fill="white" filter="url(#pwBlur)" opacity="0.05">
-                    <animate attributeName="opacity" dur="4.8s" repeatCount="1" values="0.05; 0.22; 0.7"
-                      keyTimes="0; 0.65; 1" calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" fill="freeze">
-                    </animate>
-                  </circle>
-                </mask>
-              </defs>
-
-              <!-- The Masked Dot Layer (No background layer) -->
-              <g mask="url(#pwRingMask)">
-                <rect width="300" height="300" fill="url(#pwDots)">
-                  <animate attributeName="opacity" dur="4.8s" repeatCount="1" values="0.9; 1; 0.35"
+                <!-- Outer Ring Collapsing -->
+                <circle cx="150" cy="150" r="175" fill="white" filter="url(#pwBlur)" opacity="0.75">
+                  <animate attributeName="r" dur="4.8s" repeatCount="1" values="175; 18" keyTimes="0; 1"
+                    calcMode="spline" keySplines="0.59 0.25 0.12 1" fill="freeze"></animate>
+                  <animate attributeName="opacity" dur="4.8s" repeatCount="1" values="0.65; 1; 0.15"
                     keyTimes="0; 0.55; 1" calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" fill="freeze">
                   </animate>
-                </rect>
+                </circle>
 
-                <!-- Breathing Animation -->
-                <g>
-                  <animateTransform attributeName="transform" type="scale" dur="4.8s" repeatCount="1"
-                    values="1.02; 1.06; 1.00" keyTimes="0; 0.6; 1" calcMode="spline"
-                    keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" fill="freeze"></animateTransform>
-                  <rect width="300" height="300" fill="url(#pwDots)" opacity="0.22"></rect>
-                </g>
+                <!-- Center Anchor Expanding -->
+                <circle cx="150" cy="150" r="52" fill="white" filter="url(#pwBlur)" opacity="0.05">
+                  <animate attributeName="opacity" dur="4.8s" repeatCount="1" values="0.05; 0.22; 0.7"
+                    keyTimes="0; 0.65; 1" calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" fill="freeze">
+                  </animate>
+                </circle>
+              </mask>
+            </defs>
+
+            <!-- The Masked Dot Layer (No background layer) -->
+            <g mask="url(#pwRingMask)">
+              <rect width="300" height="300" fill="url(#pwDots)">
+                <animate attributeName="opacity" dur="4.8s" repeatCount="1" values="0.9; 1; 0.35" keyTimes="0; 0.55; 1"
+                  calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" fill="freeze">
+                </animate>
+              </rect>
+
+              <!-- Breathing Animation -->
+              <g>
+                <animateTransform attributeName="transform" type="scale" dur="4.8s" repeatCount="1"
+                  values="1.02; 1.06; 1.00" keyTimes="0; 0.6; 1" calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1"
+                  fill="freeze"></animateTransform>
+                <rect width="300" height="300" fill="url(#pwDots)" opacity="0.22"></rect>
               </g>
-            </svg>
-          </div>
+            </g>
+          </svg>
         </div>
-
-        <style>
-          html,
-          body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            background: #000;
-            overflow: hidden;
-          }
-
-          #pw-loader {
-            position: fixed;
-            inset: 0;
-            width: 100vw;
-            height: 100vh;
-            background: #000;
-            display: grid;
-            place-items: center;
-            z-index: 999999;
-
-            opacity: 1;
-            will-change: opacity;
-            animation: pwFadeOut 2.8s cubic-bezier(0.59, 0.25, 0.12, 1) 2s forwards;
-            pointer-events: none;
-          }
-
-          /* Remove loader from DOM when done */
-          #pw-loader::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            animation: pwKill 0.001s linear 4.8s forwards;
-          }
-
-          @keyframes pwKill {
-            to {
-              visibility: hidden;
-            }
-          }
-
-          @keyframes pwFadeOut {
-            to {
-              opacity: 0;
-            }
-          }
-
-          #pw-loader-mark {
-            width: min(300px, 80vmin);
-            height: min(300px, 80vmin);
-
-            /* NEW SVG ICON (URL Encoded) */
-            --mask-url: url("data:image/svg+xml;charset=utf-8,%3Csvg width='25' height='25' viewBox='0 0 25 25' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M18.3871 16.0506C18.2515 16.1862 18.2515 16.4235 18.3871 16.5761L24.2684 22.4574C24.404 22.593 24.404 22.8303 24.2684 22.9828L22.9634 24.2879C22.8278 24.4235 22.5905 24.4235 22.4379 24.2879L16.5566 18.4066C16.421 18.271 16.1837 18.271 16.0311 18.4066L11.065 23.3727C10.9295 23.5083 10.6922 23.5083 10.5396 23.3727L9.23451 22.0676C9.09891 21.932 9.09891 21.6947 9.23451 21.5422L21.5227 9.25404C21.6583 9.11845 21.8956 9.11845 22.0481 9.25404L23.3532 10.5591C23.4888 10.6947 23.4888 10.932 23.3532 11.0845L18.3871 16.0506Z' fill='%23F0F3F3'/%3E%3Cpath d='M5.98305 8.33899C6.11865 8.20339 6.11865 7.9661 5.98305 7.81356L0.101695 1.93221C-0.0338983 1.79662 -0.0338983 1.55933 0.101695 1.40678L1.40678 0.101695C1.54238 -0.0338984 1.77966 -0.0338984 1.93221 0.101695L7.81356 5.98306C7.94915 6.11865 8.18644 6.11865 8.33898 5.98306L13.3051 1.01696C13.4407 0.88136 13.678 0.88136 13.8305 1.01696L15.1356 2.32204C15.2712 2.45763 15.2712 2.69492 15.1356 2.84746L2.84746 15.1356C2.71187 15.2712 2.47458 15.2712 2.32204 15.1356L1.01695 13.8305C0.881355 13.6949 0.881355 13.4576 1.01695 13.3051L5.98305 8.33899Z' fill='%23F0F3F3'/%3E%3Cpath d='M22.4576 0.101695L0.101695 22.4576C-0.0338983 22.5932 -0.0338983 22.8305 0.101695 22.983L1.40678 24.2881C1.54238 24.4237 1.77966 24.4237 1.93221 24.2881L24.2881 1.93221C24.4237 1.79662 24.4237 1.55933 24.2881 1.40678L22.9831 0.101695C22.8475 -0.0338984 22.6102 -0.0338984 22.4576 0.101695Z' fill='%23F0F3F3'/%3E%3C/svg%3E");
-
-            -webkit-mask-image: var(--mask-url);
-            -webkit-mask-repeat: no-repeat;
-            -webkit-mask-position: center;
-            -webkit-mask-size: contain;
-
-            mask-image: var(--mask-url);
-            mask-repeat: no-repeat;
-            mask-position: center;
-            mask-size: contain;
-          }
-
-          #pw-loader-svg {
-            width: 100%;
-            height: 100%;
-            display: block;
-          }
-        </style>
       </div>
-      <div size="40" progresscolor="#FFFFFF" progresswidth="3" backgroundcolor="#38363B" backgroundwidth="1" id="ijllg"
-        class="pw-loading-bar-style pwb-loading-bar"><svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="86"
-          height="86" viewport="0 0 86 86" id="is2wt">
-          <circle fill="transparent" stroke-dashoffset="0" r="40" cx="43" cy="43" stroke-dasharray="251.32741228718345"
-            stroke="#38363B" stroke-width="1" id="i32q7"></circle>
-          <circle fill="transparent" r="40" cx="43" cy="43" stroke-dasharray="251.32741228718345"
-            stroke-dashoffset="251.32741228718345" stroke="#FFFFFF" stroke-width="3" id="ixby7"
-            class="pwb-loading-bar-circle"></circle>
-        </svg>
-        <div id="ibtfr" class="pwb-loading-bar-text">0%</div>
-      </div>
+
+      <style>
+        html,
+        body {
+          margin: 0;
+          width: 100%;
+          height: 100%;
+          background: #000;
+          overflow: hidden;
+        }
+
+        #pw-loader {
+          position: fixed;
+          inset: 0;
+          width: 100vw;
+          height: 100vh;
+          background: #000;
+          display: grid;
+          place-items: center;
+          z-index: 999999;
+
+          opacity: 1;
+          will-change: opacity;
+          animation: pwFadeOut 2.8s cubic-bezier(0.59, 0.25, 0.12, 1) 2s forwards;
+          pointer-events: none;
+        }
+
+        /* Remove loader from DOM when done */
+        #pw-loader::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          animation: pwKill 0.001s linear 4.8s forwards;
+        }
+
+        @keyframes pwKill {
+          to {
+            visibility: hidden;
+          }
+        }
+
+        @keyframes pwFadeOut {
+          to {
+            opacity: 0;
+          }
+        }
+
+        #pw-loader-mark {
+          width: min(300px, 80vmin);
+          height: min(300px, 80vmin);
+
+          /* NEW SVG ICON (URL Encoded) */
+          --mask-url: url("data:image/svg+xml;charset=utf-8,%3Csvg width='25' height='25' viewBox='0 0 25 25' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M18.3871 16.0506C18.2515 16.1862 18.2515 16.4235 18.3871 16.5761L24.2684 22.4574C24.404 22.593 24.404 22.8303 24.2684 22.9828L22.9634 24.2879C22.8278 24.4235 22.5905 24.4235 22.4379 24.2879L16.5566 18.4066C16.421 18.271 16.1837 18.271 16.0311 18.4066L11.065 23.3727C10.9295 23.5083 10.6922 23.5083 10.5396 23.3727L9.23451 22.0676C9.09891 21.932 9.09891 21.6947 9.23451 21.5422L21.5227 9.25404C21.6583 9.11845 21.8956 9.11845 22.0481 9.25404L23.3532 10.5591C23.4888 10.6947 23.4888 10.932 23.3532 11.0845L18.3871 16.0506Z' fill='%23F0F3F3'/%3E%3Cpath d='M5.98305 8.33899C6.11865 8.20339 6.11865 7.9661 5.98305 7.81356L0.101695 1.93221C-0.0338983 1.79662 -0.0338983 1.55933 0.101695 1.40678L1.40678 0.101695C1.54238 -0.0338984 1.77966 -0.0338984 1.93221 0.101695L7.81356 5.98306C7.94915 6.11865 8.18644 6.11865 8.33898 5.98306L13.3051 1.01696C13.4407 0.88136 13.678 0.88136 13.8305 1.01696L15.1356 2.32204C15.2712 2.45763 15.2712 2.69492 15.1356 2.84746L2.84746 15.1356C2.71187 15.2712 2.47458 15.2712 2.32204 15.1356L1.01695 13.8305C0.881355 13.6949 0.881355 13.4576 1.01695 13.3051L5.98305 8.33899Z' fill='%23F0F3F3'/%3E%3Cpath d='M22.4576 0.101695L0.101695 22.4576C-0.0338983 22.5932 -0.0338983 22.8305 0.101695 22.983L1.40678 24.2881C1.54238 24.4237 1.77966 24.4237 1.93221 24.2881L24.2881 1.93221C24.4237 1.79662 24.4237 1.55933 24.2881 1.40678L22.9831 0.101695C22.8475 -0.0338984 22.6102 -0.0338984 22.4576 0.101695Z' fill='%23F0F3F3'/%3E%3C/svg%3E");
+
+          -webkit-mask-image: var(--mask-url);
+          -webkit-mask-repeat: no-repeat;
+          -webkit-mask-position: center;
+          -webkit-mask-size: contain;
+
+          mask-image: var(--mask-url);
+          mask-repeat: no-repeat;
+          mask-position: center;
+          mask-size: contain;
+        }
+
+        #pw-loader-svg {
+          width: 100%;
+          height: 100%;
+          display: block;
+        }
+      </style>
+    </div>
+    <div size="40" progresscolor="#FFFFFF" progresswidth="3" backgroundcolor="#38363B" backgroundwidth="1" id="ijllg"
+      class="pw-loading-bar-style pwb-loading-bar"><svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="86"
+        height="86" viewport="0 0 86 86" id="is2wt">
+        <circle fill="transparent" stroke-dashoffset="0" r="40" cx="43" cy="43" stroke-dasharray="251.32741228718345"
+          stroke="#38363B" stroke-width="1" id="i32q7"></circle>
+        <circle fill="transparent" r="40" cx="43" cy="43" stroke-dasharray="251.32741228718345"
+          stroke-dashoffset="251.32741228718345" stroke="#FFFFFF" stroke-width="3" id="ixby7"
+          class="pwb-loading-bar-circle"></circle>
+      </svg>
+      <div id="ibtfr" class="pwb-loading-bar-text">0%</div>
     </div>
   </div>
+</div>
 
 
-  <!-- Waterfall optimization -->
-  <script type="text/javascript">
-    window._pwPreviewResourceUrls = [];
-    (function waterfallOptimizationScript() { window._pwPreviewResourceUrls = window._pwPreviewResourceUrls || []; if (!window._pwLoadFileRequestsCache) window._pwLoadFileRequestsCache = new Map; if (!window._pwLoadFileResolveFnCache) window._pwLoadFileResolveFnCache = new Map; window._pwSetFileCache = (fileUrl, blob) => { if (!window._pwLoadFileResolveFnCache) throw new Error(`Variable "_pwLoadFileResolveFnCache" is undefined.`); const blobUrl = (window.URL || window.webkitURL).createObjectURL(blob); const resolveFn = window._pwLoadFileResolveFnCache.get(fileUrl); if (!resolveFn) throw new Error(`Resolve function for file "${fileUrl}" not found.`); resolveFn(blobUrl) }; window._pwWaitForExplicitFileResolve = fileUrl => { if (!window._pwLoadFileResolveFnCache) throw new Error(`Variable "_pwLoadFileResolveFnCache" is undefined.`); if (!window._pwLoadFileRequestsCache) throw new Error(`Variable "_pwLoadFileRequestsCache" is undefined.`); if (window._pwLoadFileResolveFnCache.has(fileUrl) && window._pwLoadFileRequestsCache.has(fileUrl)) return; let resolveFn = void 0; const explicitWaitPromise = new Promise(resolve => { resolveFn = resolve }); window._pwLoadFileResolveFnCache.set(fileUrl, resolveFn); window._pwLoadFileRequestsCache.set(fileUrl, explicitWaitPromise) }; window._pwLoadFileFromCacheHelper = async fileUrl => { if (!fileUrl) return void 0; try { const response = await fetch(fileUrl); if (!response.ok) return void 0; const blob = await response.blob(); const blobUrl = (window.URL || window.webkitURL).createObjectURL(blob); return blobUrl } catch (error) { return void 0 } }; window._pwLoadFileFromCache = async fileUrl => { if (!fileUrl) return void 0; if (!window._pwLoadFileRequestsCache) throw new Error(`Variable "_pwLoadFileRequestsCache" is undefined.`); let requestPromise = window._pwLoadFileRequestsCache.get(fileUrl); if (!requestPromise) { if (!window._pwLoadFileFromCacheHelper) throw new Error(`Function "_pwLoadFileFromCacheHelper" is undefined.`); requestPromise = window._pwLoadFileFromCacheHelper(fileUrl); window._pwLoadFileRequestsCache.set(fileUrl, requestPromise) } return await requestPromise }; for (const explicitResourceUrl of window._pwPreviewResourceUrls) window._pwWaitForExplicitFileResolve(explicitResourceUrl) })();
-  </script>
+<!-- Waterfall optimization -->
+<script type="text/javascript">
+  window._pwPreviewResourceUrls = [];
+  (function waterfallOptimizationScript() { window._pwPreviewResourceUrls = window._pwPreviewResourceUrls || []; if (!window._pwLoadFileRequestsCache) window._pwLoadFileRequestsCache = new Map; if (!window._pwLoadFileResolveFnCache) window._pwLoadFileResolveFnCache = new Map; window._pwSetFileCache = (fileUrl, blob) => { if (!window._pwLoadFileResolveFnCache) throw new Error(`Variable "_pwLoadFileResolveFnCache" is undefined.`); const blobUrl = (window.URL || window.webkitURL).createObjectURL(blob); const resolveFn = window._pwLoadFileResolveFnCache.get(fileUrl); if (!resolveFn) throw new Error(`Resolve function for file "${fileUrl}" not found.`); resolveFn(blobUrl) }; window._pwWaitForExplicitFileResolve = fileUrl => { if (!window._pwLoadFileResolveFnCache) throw new Error(`Variable "_pwLoadFileResolveFnCache" is undefined.`); if (!window._pwLoadFileRequestsCache) throw new Error(`Variable "_pwLoadFileRequestsCache" is undefined.`); if (window._pwLoadFileResolveFnCache.has(fileUrl) && window._pwLoadFileRequestsCache.has(fileUrl)) return; let resolveFn = void 0; const explicitWaitPromise = new Promise(resolve => { resolveFn = resolve }); window._pwLoadFileResolveFnCache.set(fileUrl, resolveFn); window._pwLoadFileRequestsCache.set(fileUrl, explicitWaitPromise) }; window._pwLoadFileFromCacheHelper = async fileUrl => { if (!fileUrl) return void 0; try { const response = await fetch(fileUrl); if (!response.ok) return void 0; const blob = await response.blob(); const blobUrl = (window.URL || window.webkitURL).createObjectURL(blob); return blobUrl } catch (error) { return void 0 } }; window._pwLoadFileFromCache = async fileUrl => { if (!fileUrl) return void 0; if (!window._pwLoadFileRequestsCache) throw new Error(`Variable "_pwLoadFileRequestsCache" is undefined.`); let requestPromise = window._pwLoadFileRequestsCache.get(fileUrl); if (!requestPromise) { if (!window._pwLoadFileFromCacheHelper) throw new Error(`Function "_pwLoadFileFromCacheHelper" is undefined.`); requestPromise = window._pwLoadFileFromCacheHelper(fileUrl); window._pwLoadFileRequestsCache.set(fileUrl, requestPromise) } return await requestPromise }; for (const explicitResourceUrl of window._pwPreviewResourceUrls) window._pwWaitForExplicitFileResolve(explicitResourceUrl) })();
+</script>
 
-  <script type="text/javascript">
-    window._pwExecLoadingPageJavascript = () => {
-      var items = document.querySelectorAll('#ijllg');
-      for (var i = 0, len = items.length; i < len; i++) {
-        (function () {
-          const _this = this; if (!_this || _this.dataset.gjsType) return; const loadingDuration = 6e3; const loadingStopAtTime = 4500; if (!window._pwLoadingProgressEasing) { window._pwLoadingProgressEasing = x => { return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2 } } if (!window._pwSetLoadingProgress) { window._pwSetLoadingProgress = (timeMilliseconds, progressText, circle) => { const progress = Math.round(window._pwLoadingProgressEasing((timeMilliseconds + 50) / loadingDuration) * 100); if (progressText) { progressText.dataset.time = `${timeMilliseconds}`; progressText.textContent = `${progress}%` } if (!circle) return; const radius = circle ? parseInt(circle.getAttribute("r") || "0") : 40; const c = Math.PI * (radius * 2); const circleProgress = (100 - progress) / 100 * c; circle.style.strokeDashoffset = `${circleProgress}` } } const timeId = setInterval(() => { const progressText = Array.from(_this.children).find(el => el.classList.contains("pwb-loading-bar-text")); const circle = _this.querySelector(`.pwb-loading-bar-circle`); const currentProgress = parseInt(progressText.dataset.time || "0"); window._pwSetLoadingProgress(currentProgress + 50, progressText, circle); if (currentProgress >= loadingStopAtTime) { clearInterval(timeId) } }, 50)
-        }.bind(items[i]))();
-      }
-    };
-    window._pwExecLoadingPageJavascript();
-  </script>
-
-
-
-
+<script type="text/javascript">
+  window._pwExecLoadingPageJavascript = () => {
+    var items = document.querySelectorAll('#ijllg');
+    for (var i = 0, len = items.length; i < len; i++) {
+      (function () {
+        const _this = this; if (!_this || _this.dataset.gjsType) return; const loadingDuration = 6e3; const loadingStopAtTime = 4500; if (!window._pwLoadingProgressEasing) { window._pwLoadingProgressEasing = x => { return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2 } } if (!window._pwSetLoadingProgress) { window._pwSetLoadingProgress = (timeMilliseconds, progressText, circle) => { const progress = Math.round(window._pwLoadingProgressEasing((timeMilliseconds + 50) / loadingDuration) * 100); if (progressText) { progressText.dataset.time = `${timeMilliseconds}`; progressText.textContent = `${progress}%` } if (!circle) return; const radius = circle ? parseInt(circle.getAttribute("r") || "0") : 40; const c = Math.PI * (radius * 2); const circleProgress = (100 - progress) / 100 * c; circle.style.strokeDashoffset = `${circleProgress}` } } const timeId = setInterval(() => { const progressText = Array.from(_this.children).find(el => el.classList.contains("pwb-loading-bar-text")); const circle = _this.querySelector(`.pwb-loading-bar-circle`); const currentProgress = parseInt(progressText.dataset.time || "0"); window._pwSetLoadingProgress(currentProgress + 50, progressText, circle); if (currentProgress >= loadingStopAtTime) { clearInterval(timeId) } }, 50)
+      }.bind(items[i]))();
+    }
+  };
+  window._pwExecLoadingPageJavascript();
+</script>

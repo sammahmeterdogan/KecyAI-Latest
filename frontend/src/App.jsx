@@ -17,12 +17,16 @@ import SmolVLA from './pages/platform/SmolVLA';
 import Pi0 from './pages/platform/Pi0';
 import CapabilityView from './pages/platform/CapabilityView';
 import AdminPage from './pages/platform/AdminPage';
+import Documents from './pages/platform/Documents';
 
 export default function App() {
     return (
         <BrowserRouter>
             <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/documents" element={<PlatformLayout />}>
+                    <Route index element={<Documents />} />
+                </Route>
                 <Route path="/kecy/platform" element={<PlatformLayout />}>
                     <Route index element={<Overview />} />
                     <Route path="parca-listesi" element={<Parts />} />

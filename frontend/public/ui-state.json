@@ -1,4 +1,4 @@
-{
+﻿{
     "devices": {
         "mobile": {
             "scrollSettings": {
@@ -65,22 +65,22 @@
     "links": {
         "iu2co-2-5": {
             "type": "external",
-            "url": "https://tenbinlabs.xyz/privacy-policy",
+            "url": "https://kecyai.local/privacy-policy",
             "newTab": true
         },
         "iu2co-2": {
             "type": "external",
-            "url": "https://x.com/tenbinlabs",
+            "url": "https://x.com/kecyai",
             "newTab": true
         },
         "iu2co-2-7": {
             "type": "external",
-            "url": "https://github.com/tenbinlabs",
+            "url": "https://github.com/kecyai",
             "newTab": true
         },
         "ivkpg-2-2-2-3": {
             "type": "external",
-            "url": "https://tenbinlabs.xyz/privacy-policy",
+            "url": "https://kecyai.local/privacy-policy",
             "newTab": true
         }
     },

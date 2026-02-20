@@ -1,6 +1,6 @@
-package com.tenbinlabs.kecyai;
+﻿package com.kecyai;
 
-import com.tenbinlabs.kecyai.infrastructure.RuntimeProperties;
+import com.kecyai.infrastructure.RuntimeProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;

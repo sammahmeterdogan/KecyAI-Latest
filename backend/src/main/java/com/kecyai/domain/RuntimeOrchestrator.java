@@ -1,4 +1,4 @@
-package com.tenbinlabs.kecyai.domain;
+﻿package com.kecyai.domain;
 
 /**
  * Ensures the LeRobot runtime container is reachable before any

@@ -1,4 +1,4 @@
-# 🤖 KECY AI
+﻿# ğŸ¤– KECY AI
 
 > **Web-Based Open Source Robotics Education Platform**
 
@@ -9,7 +9,7 @@
 
 ---
 
-## 🚀 Quick Start
+## ğŸš€ Quick Start
 
 ### Option 1: One-Click Start (Windows)
 
@@ -17,7 +17,7 @@
 
 | Start Full Stack | Stop Full Stack |
 |-----------------|-----------------|
-| [📦 Start](scripts/start.vbs) | [⏹️ Stop](scripts/stop.vbs) |
+| [ğŸ“¦ Start](scripts/start.vbs) | [â¹ï¸ Stop](scripts/stop.vbs) |
 
 *Double-click the links above (no console window)*
 
@@ -29,13 +29,13 @@
 docker compose -f infra/compose/docker-compose.yml up --build
 ```
 
-✅ **Frontend:** http://localhost:3000  
-✅ **Backend API:** http://localhost:8080  
-✅ **Runtime:** http://localhost:8100
+âœ… **Frontend:** http://localhost:3000  
+âœ… **Backend API:** http://localhost:8080  
+âœ… **Runtime:** http://localhost:8100
 
 ---
 
-## 📋 Prerequisites
+## ğŸ“‹ Prerequisites
 
 Before you begin, ensure you have the following installed:
 
@@ -56,22 +56,22 @@ docker --version  # Should show Docker 24+
 
 ---
 
-## 🏗️ Project Structure
+## ğŸ—ï¸ Project Structure
 
 ```
 kecy-ai/
-├── frontend/          # Vite + React UI (platform pages, 3D visuals)
-├── backend/           # Spring Boot Java 17 backend
-├── runtime/           # Dockerized LeRobot + ROS runtime
-├── infra/             # Docker Compose files, environment templates
-├── docs/              # API docs, architecture, guides
-├── scripts/           # Windows helpers (start/stop scripts)
-└── README.md          # You are here
+â”œâ”€â”€ frontend/          # Vite + React UI (platform pages, 3D visuals)
+â”œâ”€â”€ backend/           # Spring Boot Java 17 backend
+â”œâ”€â”€ runtime/           # Dockerized LeRobot + ROS runtime
+â”œâ”€â”€ infra/             # Docker Compose files, environment templates
+â”œâ”€â”€ docs/              # API docs, architecture, guides
+â”œâ”€â”€ scripts/           # Windows helpers (start/stop scripts)
+â””â”€â”€ README.md          # You are here
 ```
 
 ---
 
-## 🛠️ Development Setup
+## ğŸ› ï¸ Development Setup
 
 ### Full Stack (Recommended for Beginners)
 
@@ -96,7 +96,7 @@ npm install
 npm run dev
 ```
 
-> ⚠️ **Note:** Requires backend running on port 8080
+> âš ï¸ **Note:** Requires backend running on port 8080
 
 ---
 
@@ -107,11 +107,11 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-> ⚠️ **Note:** Requires runtime container running
+> âš ï¸ **Note:** Requires runtime container running
 
 ---
 
-## 🌐 Public Demo (Cloudflare Tunnel)
+## ğŸŒ Public Demo (Cloudflare Tunnel)
 
 Share your local instance publicly with a `trycloudflare.com` URL:
 
@@ -129,32 +129,32 @@ docker logs kecyai-cloudflared
 
 ---
 
-## 📖 Documentation
+## ğŸ“– Documentation
 
 | Section | Description |
 |---------|-------------|
-| [📚 Docs Overview](docs/README.md) | Main documentation index |
-| [🔌 API Reference](docs/api/) | REST API endpoints |
-| [🏛️ Architecture](docs/architecture/) | System design & decisions |
-| [📖 Guides](docs/guides/) | Developer & operator runbooks |
-| [📅 Phases](docs/phases/) | Implementation roadmap |
+| [ğŸ“š Docs Overview](docs/README.md) | Main documentation index |
+| [ğŸ”Œ API Reference](docs/api/) | REST API endpoints |
+| [ğŸ›ï¸ Architecture](docs/architecture/) | System design & decisions |
+| [ğŸ“– Guides](docs/guides/) | Developer & operator runbooks |
+| [ğŸ“… Phases](docs/phases/) | Implementation roadmap |
 
 ---
 
-## 🎯 Key Features
+## ğŸ¯ Key Features
 
 | Feature | Description |
 |---------|-------------|
-| **🎮 Teleoperation** | Real-time robot control via web interface |
-| **📹 Camera Feeds** | Multi-camera streaming support |
-| **📊 Dataset Recording** | Record demonstrations for training |
-| **🧠 Policy Training** | Train AI policies (ACT, SmolVLA, Pi0) |
-| **🔧 Calibration** | Robot calibration workflows |
-| **⚙️ Hardware Admin** | Configure serial ports, robot types |
+| **ğŸ® Teleoperation** | Real-time robot control via web interface |
+| **ğŸ“¹ Camera Feeds** | Multi-camera streaming support |
+| **ğŸ“Š Dataset Recording** | Record demonstrations for training |
+| **ğŸ§  Policy Training** | Train AI policies (ACT, SmolVLA, Pi0) |
+| **ğŸ”§ Calibration** | Robot calibration workflows |
+| **âš™ï¸ Hardware Admin** | Configure serial ports, robot types |
 
 ---
 
-## 🧪 Testing
+## ğŸ§ª Testing
 
 ### Backend Tests
 
@@ -169,7 +169,7 @@ Manual verification via browser (no automated test suite configured).
 
 ---
 
-## 🔧 Configuration
+## ğŸ”§ Configuration
 
 ### Environment Variables
 
@@ -188,17 +188,17 @@ Manual verification via browser (no automated test suite configured).
 
 ---
 
-## ⚠️ Security Notes
+## âš ï¸ Security Notes
 
-- **Docker Socket Mounting:** Required for runtime autostart—use only in trusted development environments
-- **Cloudflare Tunnel:** Exposes your local instance publicly—use with caution
+- **Docker Socket Mounting:** Required for runtime autostartâ€”use only in trusted development environments
+- **Cloudflare Tunnel:** Exposes your local instance publiclyâ€”use with caution
 - **Hardware Access:** Serial port access requires appropriate system permissions
 
 See [`docs/guides/zero_terminal_setup.md`](docs/guides/zero_terminal_setup.md) for autostart configuration.
 
 ---
 
-## 🤝 Contributing
+## ğŸ¤ Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
@@ -209,13 +209,13 @@ See [`docs/guides/zero_terminal_setup.md`](docs/guides/zero_terminal_setup.md) f
 ### Commit Convention
 
 Use short, imperative subjects:
-- ✅ `Add runtime health check endpoint`
-- ✅ `Fix calibration timeout issue`
-- ✅ `Update sidebar navigation styles`
+- âœ… `Add runtime health check endpoint`
+- âœ… `Fix calibration timeout issue`
+- âœ… `Update sidebar navigation styles`
 
 ---
 
-## 📸 Screenshots
+## ğŸ“¸ Screenshots
 
 ### Platform Dashboard
 ![Dashboard](docs/assets/dashboard.png)
@@ -228,26 +228,26 @@ Use short, imperative subjects:
 
 ---
 
-## 📄 License
+## ğŸ“„ License
 
-This project is licensed under the MIT License—see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **[LeRobot](https://github.com/huggingface/lerobot)** — Hugging Face's robotics framework
-- **[Spring Boot](https://spring.io/projects/spring-boot)** — Backend framework
-- **[React](https://react.dev/)** — Frontend framework
-- **[Three.js](https://threejs.org/)** — 3D graphics library
+This project is licensed under the MIT Licenseâ€”see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 📬 Contact
+## ğŸ™ Acknowledgments
+
+- **[LeRobot](https://github.com/huggingface/lerobot)** â€” Hugging Face's robotics framework
+- **[Spring Boot](https://spring.io/projects/spring-boot)** â€” Backend framework
+- **[React](https://react.dev/)** â€” Frontend framework
+- **[Three.js](https://threejs.org/)** â€” 3D graphics library
+
+---
+
+## ğŸ“¬ Contact
 
 | Resource | Link |
 |----------|------|
-| Website | [tenbinlabs.xyz](https://tenbinlabs.xyz/) |
+| Website | [kecyai.local](https://kecyai.local/) |
 | Documentation | [docs/](docs/README.md) |
 | Issues | [GitHub Issues](../../issues) |
 
@@ -255,8 +255,8 @@ This project is licensed under the MIT License—see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**Made with ❤️ by Tenbin Labs**
+**Made with â¤ï¸ by Tenbin Labs**
 
-[⬆ Back to Top](#-kecy-ai)
+[â¬† Back to Top](#-kecy-ai)
 
 </div>

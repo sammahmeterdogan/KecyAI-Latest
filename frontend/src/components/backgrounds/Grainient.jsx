@@ -93,95 +93,95 @@ const fragment = `
 `;
 
 const Grainient = ({
-    color1 = "#211c21",
-    color2 = "#727274",
-    color3 = "#d6d3de",
-    timeSpeed = 0.25,
-    uNoiseScale = 2,
-    uGrainAmount = 0.1,
-    uGrainScale = 2,
-    uGrainAnimated = false,
-    uContrast = 1.5,
-    uGamma = 1,
-    uSaturation = 1,
-    uWarpStrength = 1,
-    uWarpFrequency = 5,
-    uWarpSpeed = 2,
-    uWarpAmplitude = 50,
+  color1 = "#211c21",
+  color2 = "#727274",
+  color3 = "#d6d3de",
+  timeSpeed = 0.25,
+  uNoiseScale = 2,
+  uGrainAmount = 0.1,
+  uGrainScale = 2,
+  uGrainAnimated = false,
+  uContrast = 1.5,
+  uGamma = 1,
+  uSaturation = 1,
+  uWarpStrength = 1,
+  uWarpFrequency = 5,
+  uWarpSpeed = 2,
+  uWarpAmplitude = 50,
 }) => {
-    const ctnRef = useRef(null);
+  const ctnRef = useRef(null);
 
-    useEffect(() => {
-        if (!ctnRef.current) return;
+  useEffect(() => {
+    if (!ctnRef.current) return;
 
-        const renderer = new Renderer({ alpha: true, dpr: 2 });
-        const gl = renderer.gl;
-        gl.clearColor(0, 0, 0, 0);
+    const renderer = new Renderer({ alpha: true, dpr: 2 });
+    const gl = renderer.gl;
+    gl.clearColor(0, 0, 0, 0);
 
-        const container = ctnRef.current;
-        container.appendChild(gl.canvas);
+    const container = ctnRef.current;
+    container.appendChild(gl.canvas);
 
-        const camera = new Camera(gl);
-        camera.position.z = 1;
+    const camera = new Camera(gl);
+    camera.position.z = 1;
 
-        function resize() {
-            renderer.setSize(container.offsetWidth, container.offsetHeight);
-            camera.perspective({ aspect: gl.canvas.width / gl.canvas.height });
-        }
+    function resize() {
+      renderer.setSize(container.offsetWidth, container.offsetHeight);
+      camera.perspective({ aspect: gl.canvas.width / gl.canvas.height });
+    }
 
-        resize();
-        const observer = new ResizeObserver(resize);
-        observer.observe(container);
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
 
-        const geometry = new Plane(gl, { width: 2, height: 2 });
-        const program = new Program(gl, {
-            vertex,
-            fragment,
-            uniforms: {
-                uTime: { value: 0 },
-                uColor1: { value: new Color(color1) },
-                uColor2: { value: new Color(color2) },
-                uColor3: { value: new Color(color3) },
-                uNoiseScale: { value: uNoiseScale },
-                uGrainAmount: { value: uGrainAmount },
-                uGrainScale: { value: uGrainScale },
-                uGrainAnimated: { value: uGrainAnimated },
-                uContrast: { value: uContrast },
-                uGamma: { value: uGamma },
-                uSaturation: { value: uSaturation },
-                uWarpStrength: { value: uWarpStrength },
-                uWarpFrequency: { value: uWarpFrequency },
-                uWarpSpeed: { value: uWarpSpeed },
-                uWarpAmplitude: { value: uWarpAmplitude },
-            },
-        });
+    const geometry = new Plane(gl, { width: 2, height: 2 });
+    const program = new Program(gl, {
+      vertex,
+      fragment,
+      uniforms: {
+        uTime: { value: 0 },
+        uColor1: { value: new Color(color1) },
+        uColor2: { value: new Color(color2) },
+        uColor3: { value: new Color(color3) },
+        uNoiseScale: { value: uNoiseScale },
+        uGrainAmount: { value: uGrainAmount },
+        uGrainScale: { value: uGrainScale },
+        uGrainAnimated: { value: uGrainAnimated },
+        uContrast: { value: uContrast },
+        uGamma: { value: uGamma },
+        uSaturation: { value: uSaturation },
+        uWarpStrength: { value: uWarpStrength },
+        uWarpFrequency: { value: uWarpFrequency },
+        uWarpSpeed: { value: uWarpSpeed },
+        uWarpAmplitude: { value: uWarpAmplitude },
+      },
+    });
 
-        const mesh = new Mesh(gl, { geometry, program });
+    const mesh = new Mesh(gl, { geometry, program });
 
-        let animateId;
-        function update(t) {
-            animateId = requestAnimationFrame(update);
-            program.uniforms.uTime.value = t * 0.001 * timeSpeed;
-            renderer.render({ scene: mesh, camera });
-        }
-        animateId = requestAnimationFrame(update);
+    let animateId;
+    function update(t) {
+      animateId = requestAnimationFrame(update);
+      program.uniforms.uTime.value = t * 0.001 * timeSpeed;
+      renderer.render({ scene: mesh, camera });
+    }
+    animateId = requestAnimationFrame(update);
 
-        return () => {
-            cancelAnimationFrame(animateId);
-            observer.disconnect();
-            if (container.contains(gl.canvas)) {
-                container.removeChild(gl.canvas);
-            }
-            gl.getExtension('WEBGL_lose_context')?.loseContext();
-        };
-    }, [
-        color1, color2, color3, timeSpeed,
-        uNoiseScale, uGrainAmount, uGrainScale, uGrainAnimated,
-        uContrast, uGamma, uSaturation,
-        uWarpStrength, uWarpFrequency, uWarpSpeed, uWarpAmplitude
-    ]);
+    return () => {
+      cancelAnimationFrame(animateId);
+      observer.disconnect();
+      if (container.contains(gl.canvas)) {
+        container.removeChild(gl.canvas);
+      }
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    };
+  }, [
+    color1, color2, color3, timeSpeed,
+    uNoiseScale, uGrainAmount, uGrainScale, uGrainAnimated,
+    uContrast, uGamma, uSaturation,
+    uWarpStrength, uWarpFrequency, uWarpSpeed, uWarpAmplitude
+  ]);
 
-    return <div ref={ctnRef} style={{ width: '100%', height: '100%' }} />;
+  return <div ref={ctnRef} style={{ width: '100%', height: '100%' }} />;
 };
 
 // Start of OGL Mesh import (fixed missing import)

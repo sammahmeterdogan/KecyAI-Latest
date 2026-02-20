@@ -1,4 +1,4 @@
-# KECY AI - Project Context
+﻿# KECY AI - Project Context
 
 ## Project Overview
 
@@ -18,24 +18,24 @@
 The project follows a **Clean Architecture** pattern in the backend:
 
 ```
-backend/src/main/java/com/tenbinlabs/kecyai/
-├── KecyBackendApplication.java    # Bootstrap
-├── api/                           # REST Controllers (HTTP layer)
-├── application/                   # Application services & use cases
-├── domain/                        # Business logic & entities
-└── infrastructure/                # External integrations (Docker, Runtime API)
+backend/src/main/java/com/kecyai/
+â”œâ”€â”€ KecyBackendApplication.java    # Bootstrap
+â”œâ”€â”€ api/                           # REST Controllers (HTTP layer)
+â”œâ”€â”€ application/                   # Application services & use cases
+â”œâ”€â”€ domain/                        # Business logic & entities
+â””â”€â”€ infrastructure/                # External integrations (Docker, Runtime API)
 ```
 
 **Frontend structure:**
 ```
 frontend/src/
-├── main.jsx                       # Entry point
-├── App.jsx                        # Router configuration
-├── pages/                         # Route components (PlatformLayout, Overview, etc.)
-├── components/                    # Reusable UI components
-├── features/                      # Feature-specific modules
-├── lib/                           # Utilities (API clients, helpers)
-└── types/                         # TypeScript-like type definitions (JSDoc)
+â”œâ”€â”€ main.jsx                       # Entry point
+â”œâ”€â”€ App.jsx                        # Router configuration
+â”œâ”€â”€ pages/                         # Route components (PlatformLayout, Overview, etc.)
+â”œâ”€â”€ components/                    # Reusable UI components
+â”œâ”€â”€ features/                      # Feature-specific modules
+â”œâ”€â”€ lib/                           # Utilities (API clients, helpers)
+â””â”€â”€ types/                         # TypeScript-like type definitions (JSDoc)
 ```
 
 ### Key Features
@@ -174,7 +174,7 @@ mvn test
 
 ### Security Notes
 
-- Runtime autostart requires Docker socket mounting—use only in trusted environments
+- Runtime autostart requires Docker socket mountingâ€”use only in trusted environments
 - See `docs/guides/zero_terminal_setup.md` for autostart configuration
 
 ---
@@ -183,11 +183,11 @@ mvn test
 
 ```
 docs/
-├── api/           # API contracts and endpoint references
-├── architecture/  # Architecture decisions, upstream dependencies
-├── guides/        # Operator and developer runbooks
-├── phases/        # Implementation phase records
-└── README.md      # Documentation index
+â”œâ”€â”€ api/           # API contracts and endpoint references
+â”œâ”€â”€ architecture/  # Architecture decisions, upstream dependencies
+â”œâ”€â”€ guides/        # Operator and developer runbooks
+â”œâ”€â”€ phases/        # Implementation phase records
+â””â”€â”€ README.md      # Documentation index
 ```
 
 ---
@@ -196,7 +196,7 @@ docs/
 
 ### Add a New API Endpoint
 
-1. Create controller in `backend/src/main/java/com/tenbinlabs/kecyai/api/`
+1. Create controller in `backend/src/main/java/com/kecyai/api/`
 2. Define request/response DTOs in `domain/` or `application/`
 3. Implement business logic in `application/` service layer
 4. Add integration code in `infrastructure/` if needed

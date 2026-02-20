@@ -1,4 +1,4 @@
-package com.tenbinlabs.kecyai.domain;
+﻿package com.kecyai.domain;
 
 import java.util.Map;
 
@@ -47,7 +47,7 @@ public interface RuntimeClient {
      */
     reactor.core.publisher.Flux<Map<String, Object>> getTelemetryStream();
 
-    // ─── Calibration ───
+// ----------------------------------------------------------------
 
     /** Get calibration session status. */
     Map<String, Object> getCalibrationStatus();
@@ -61,7 +61,7 @@ public interface RuntimeClient {
     /** Stop the current calibration session. */
     Map<String, Object> stopCalibration();
 
-    // ─── Admin / Hardware ───
+// ----------------------------------------------------------------
 
     Map<String, Object> getPreflightChecks(Map<String, Object> config);
 
@@ -77,7 +77,7 @@ public interface RuntimeClient {
     /** Update hardware configuration on runtime. */
     Map<String, Object> setHardwareConfig(Map<String, Object> config);
 
-    // ─── Recording ───
+// ----------------------------------------------------------------
 
     Map<String, Object> startRecording(Map<String, Object> config);
 
@@ -87,7 +87,7 @@ public interface RuntimeClient {
 
     Map<String, Object> getDatasets();
 
-    // ─── Training ───
+// ----------------------------------------------------------------
 
     Map<String, Object> startTraining(Map<String, Object> config);
 

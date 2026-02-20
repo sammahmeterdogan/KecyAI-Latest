@@ -8,7 +8,23 @@ export default function Home() {
     useEffect(() => {
         // Set PeachWorlds initial path
         window._pwInitialPath = '/';
-
+        // Minimal cache helpers expected by PeachWorlds runtime
+        if (!window._pwFileCache) {
+            window._pwFileCache = new Map();
+        }
+        if (!window._pwSetFileCache) {
+            window._pwSetFileCache = (key, value) => {
+                window._pwFileCache.set(key, value);
+            };
+        }
+        if (!window._pwLoadFileFromCache) {
+            window._pwLoadFileFromCache = async (key) => {
+                if (window._pwFileCache.has(key)) {
+                    return window._pwFileCache.get(key);
+                }
+                return key;
+            };
+        }
         // Fetch the original PeachWorlds HTML body content
         fetch('/home-content.html')
             .then((res) => res.text())
@@ -30,15 +46,9 @@ export default function Home() {
                     }
                 });
 
-                // Execute inline scripts that were injected as HTML
-                containerRef.current.querySelectorAll('script').forEach((oldScript) => {
-                    const newScript = document.createElement('script');
-                    if (oldScript.src) {
-                        newScript.src = oldScript.src;
-                    } else {
-                        newScript.textContent = oldScript.textContent;
-                    }
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                // Strip inline scripts from injected HTML (reduce XSS surface)
+                containerRef.current.querySelectorAll('script').forEach((script) => {
+                    script.remove();
                 });
 
                 // Load PeachWorlds runtime

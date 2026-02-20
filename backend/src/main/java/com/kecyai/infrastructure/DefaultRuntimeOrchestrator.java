@@ -1,4 +1,4 @@
-package com.tenbinlabs.kecyai.infrastructure;
+﻿package com.kecyai.infrastructure;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.exception.DockerException;
@@ -8,9 +8,9 @@ import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
-import com.tenbinlabs.kecyai.domain.RuntimeClient;
-import com.tenbinlabs.kecyai.domain.RuntimeNotReadyException;
-import com.tenbinlabs.kecyai.domain.RuntimeOrchestrator;
+import com.kecyai.domain.RuntimeClient;
+import com.kecyai.domain.RuntimeNotReadyException;
+import com.kecyai.domain.RuntimeOrchestrator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Default orchestrator: health check → optional Docker autostart → poll.
+ * Default orchestrator: health check â†’ optional Docker autostart â†’ poll.
  *
  * Thread-safety: a ReentrantLock prevents concurrent autostart attempts.
  * After a failed start, a 60-second cooldown avoids rapid Docker spam.
@@ -45,18 +45,18 @@ public class DefaultRuntimeOrchestrator implements RuntimeOrchestrator {
                 props.isEnabled(), props.getTimeoutSeconds(), props.getContainerName());
     }
 
-    // ─────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Public API
-    // ─────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Override
     public void ensureRuntimeReady() {
-        // Fast path: runtime already healthy → done
+        // Fast path: runtime already healthy â†’ done
         if (isRuntimeHealthy()) {
             return;
         }
 
-        // Autostart disabled → fail immediately with structured error
+        // Autostart disabled â†’ fail immediately with structured error
         if (!props.isEnabled()) {
             throw new RuntimeNotReadyException(
                     "RUNTIME_UNREACHABLE",
@@ -64,13 +64,13 @@ public class DefaultRuntimeOrchestrator implements RuntimeOrchestrator {
                             + "Start manually: docker compose -f infra/compose/docker-compose.yml up -d runtime");
         }
 
-        // Autostart enabled → try Docker start (with lock + cooldown)
+        // Autostart enabled â†’ try Docker start (with lock + cooldown)
         attemptAutostart();
     }
 
-    // ─────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Health probe
-    // ─────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private boolean isRuntimeHealthy() {
         try {
@@ -81,9 +81,9 @@ public class DefaultRuntimeOrchestrator implements RuntimeOrchestrator {
         }
     }
 
-    // ─────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Docker autostart (locked, with cooldown)
-    // ─────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void attemptAutostart() {
         // Cooldown: don't retry too frequently after a failed attempt
@@ -127,9 +127,9 @@ public class DefaultRuntimeOrchestrator implements RuntimeOrchestrator {
         }
     }
 
-    // ─────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Docker client operations
-    // ─────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /**
      * Creates a short-lived Docker client, inspects the container,

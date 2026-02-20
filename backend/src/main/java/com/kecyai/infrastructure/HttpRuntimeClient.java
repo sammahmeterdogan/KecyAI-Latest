@@ -1,8 +1,8 @@
-package com.tenbinlabs.kecyai.infrastructure;
+﻿package com.kecyai.infrastructure;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tenbinlabs.kecyai.domain.RuntimeClient;
+import com.kecyai.domain.RuntimeClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -37,9 +37,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                 this.webClient = webClientBuilder.baseUrl(runtimeBaseUrl).build();
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Helpers: safe body parsing + exchangeToMono
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         /**
          * Safely parse a response body string into a Map.
@@ -121,9 +121,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                                 .block();
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Base Metadata (GET -- safe to use retrieve)
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         @Override
         @SuppressWarnings("unchecked")
@@ -156,9 +156,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                                 .block();
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Teleop Control (POST -- must use exchangeToMono)
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         @Override
         public Map<String, Object> startTeleop(Map<String, Object> config) {
@@ -193,9 +193,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                                 .block();
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Joint Control (POST -- must use exchangeToMono)
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         @Override
         public void setJoint(String jointId, double value) {
@@ -250,9 +250,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                 return postForMapNoBody("/teleop/estop/off");
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Calibration
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         @Override
         public Map<String, Object> getCalibrationStatus() {
@@ -283,9 +283,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                 return postForMapNoBody("/calibration/stop");
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Admin / Hardware
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         @Override
         @SuppressWarnings("unchecked")
@@ -344,9 +344,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                 return postForMap("/admin/config", config);
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Recording (POST + GET)
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         @Override
         public Map<String, Object> startRecording(Map<String, Object> config) {
@@ -386,9 +386,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                                 .block();
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Training (POST + GET)
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         @Override
         public Map<String, Object> startTraining(Map<String, Object> config) {
@@ -428,9 +428,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                                 .block();
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Telemetry Stream (SSE -- uses retrieve, OK)
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         public WebClient getWebClient() {
                 return webClient;
@@ -447,9 +447,9 @@ public class HttpRuntimeClient implements RuntimeClient {
                                                 });
         }
 
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
         // Inner Exception (preserves runtime HTTP status + body)
-        // ─────────────────────────────────────────────
+// ----------------------------------------------------------------
 
         /**
          * Carries the exact HTTP status code and parsed JSON body from the
