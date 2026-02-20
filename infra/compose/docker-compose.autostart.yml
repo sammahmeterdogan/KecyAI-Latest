@@ -1,0 +1,21 @@
+# docker-compose.autostart.yml
+#
+# Optional override: enables backend -> Docker autostart for the runtime container.
+# The backend will start the runtime container automatically if it is stopped.
+#
+# Usage:
+#   docker compose -f infra/compose/docker-compose.yml \
+#                  -f infra/compose/docker-compose.autostart.yml up -d
+#
+# SECURITY WARNING:
+#   Mounting docker.sock gives the backend container full Docker API access.
+#   Only use in trusted development environments. Never in production.
+
+services:
+  backend:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - RUNTIME_AUTOSTART_ENABLED=true
+      - RUNTIME_AUTOSTART_TIMEOUT_SECONDS=30
+      - RUNTIME_AUTOSTART_CONTAINER_NAME=kecyai-runtime

@@ -1,0 +1,208 @@
+{
+    "devices": {
+        "mobile": {
+            "scrollSettings": {
+                "type": "native",
+                "easing": "default",
+                "duration": 1200,
+                "speed": 100,
+                "isInfinite": false
+            },
+            "canvases": {
+                "ihvf": {}
+            }
+        },
+        "tablet": {
+            "scrollSettings": {
+                "type": "native",
+                "easing": "default",
+                "duration": 1200,
+                "speed": 100,
+                "isInfinite": false
+            },
+            "canvases": {
+                "ihvf": {}
+            }
+        },
+        "desktop": {
+            "scrollSettings": {
+                "type": "smooth",
+                "easing": "default",
+                "duration": 1200,
+                "speed": 100,
+                "isInfinite": false
+            },
+            "canvases": {
+                "ihvf": {
+                    "sceneId": "ea51ca5a-4335-4420-9b97-ccf49cc8f29a",
+                    "cameraId": "ea94b165-c53b-4704-87a9-1633ae09cd51"
+                }
+            }
+        }
+    },
+    "sections": {
+        "ilojm-2": {
+            "name": "built",
+            "offsetY": 0,
+            "hash": "built"
+        },
+        "ilojm": {
+            "name": "hero",
+            "offsetY": 0,
+            "hash": "hero"
+        },
+        "irkm9": {
+            "name": "table",
+            "offsetY": 0,
+            "hash": "table"
+        },
+        "irkm9-3": {
+            "name": "graph",
+            "offsetY": 0,
+            "hash": "graph"
+        }
+    },
+    "links": {
+        "iu2co-2-5": {
+            "type": "external",
+            "url": "https://tenbinlabs.xyz/privacy-policy",
+            "newTab": true
+        },
+        "iu2co-2": {
+            "type": "external",
+            "url": "https://x.com/tenbinlabs",
+            "newTab": true
+        },
+        "iu2co-2-7": {
+            "type": "external",
+            "url": "https://github.com/tenbinlabs",
+            "newTab": true
+        },
+        "ivkpg-2-2-2-3": {
+            "type": "external",
+            "url": "https://tenbinlabs.xyz/privacy-policy",
+            "newTab": true
+        }
+    },
+    "scrollAnimations": {
+        "i77il": {
+            "start": "bottom",
+            "effectB": "fade",
+            "sectionId": "ilojm",
+            "type": "section"
+        },
+        "iieh1": {
+            "start": "bottom",
+            "effectB": "fade",
+            "sectionId": "ilojm",
+            "type": "section"
+        },
+        "i77il-2-2-2": {
+            "start": "center",
+            "effectB": "fade",
+            "sectionId": "irkm9",
+            "effectA": "fade",
+            "type": "section"
+        },
+        "i77il-3": {
+            "start": "center",
+            "effectA": "fade",
+            "effectB": "fade",
+            "sectionId": "irkm9",
+            "type": "section"
+        },
+        "i77il-3-3": {
+            "start": "center",
+            "effectA": "fade",
+            "effectB": "fade",
+            "sectionId": "irkm9-3",
+            "type": "section"
+        },
+        "i77il-2": {
+            "effectA": {
+                "keyframe": {
+                    "opacity": 0
+                },
+                "transition": {
+                    "delay": 150,
+                    "type": "spring"
+                }
+            },
+            "effectB": "fade",
+            "type": "appear"
+        },
+        "i77il-2-2": {
+            "effectA": {
+                "keyframe": {
+                    "opacity": 0
+                },
+                "transition": {
+                    "delay": 200,
+                    "type": "spring"
+                }
+            },
+            "effectB": "fade",
+            "type": "appear"
+        },
+        "i77il-2-3": {
+            "effectA": {
+                "keyframe": {
+                    "opacity": 0
+                },
+                "transition": {
+                    "delay": 250,
+                    "type": "spring"
+                }
+            },
+            "effectB": "fade",
+            "type": "appear"
+        },
+        "i77il-2-4": {
+            "effectA": {
+                "keyframe": {
+                    "opacity": 0
+                },
+                "transition": {
+                    "delay": 300,
+                    "type": "spring"
+                }
+            },
+            "effectB": "fade",
+            "type": "appear"
+        },
+        "ikfl1-4": {
+            "start": "bottom",
+            "effectA": "fade",
+            "effectB": "fade",
+            "sectionId": "ilojm-2",
+            "type": "section"
+        },
+        "ihxpev": {
+            "start": "bottom",
+            "effectA": "fade",
+            "effectB": "fade",
+            "sectionId": "ilojm-2",
+            "type": "section"
+        }
+    },
+    "anchors": {
+        "i10n4h": {
+            "percentage": 0
+        },
+        "i10n4h-2": {
+            "percentage": 0.065
+        },
+        "i10n4h-2-2": {
+            "percentage": 0.32
+        },
+        "i10n4h-2-2-2": {
+            "percentage": 0.445
+        },
+        "i10n4h-2-2-2-2": {
+            "percentage": 0.54
+        },
+        "i10n4h-2-2-2-3": {
+            "percentage": 0.42
+        }
+    }
+}

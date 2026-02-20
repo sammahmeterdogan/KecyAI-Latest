@@ -1,0 +1,61 @@
+services:
+  runtime:
+    build:
+      context: ../../runtime
+      dockerfile: docker/Dockerfile
+    container_name: kecyai-runtime
+    ports:
+      - "8100:8100"
+    volumes:
+      - kecyai-datasets:/home/kecyai/.kecyai/datasets
+      - kecyai-models:/home/kecyai/.kecyai/models
+    # Devices are now in docker-compose.hardware.yml
+    # This base config is safe for all platforms (Windows/Linux/Mac)
+    environment:
+      - PYTHONPATH=/lerobot/src:/lerobot:/kecyai-app
+      - DEVICE=cpu
+      - KECYAI_DATASETS_DIR=/home/kecyai/.kecyai/datasets
+      - KECYAI_MODELS_DIR=/home/kecyai/.kecyai/models
+    restart: unless-stopped
+    networks:
+      - kecy-network
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: kecyai-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - LEROBOT_RUNTIME_BASE_URL=http://runtime:8100
+    depends_on:
+      - runtime
+    restart: unless-stopped
+    networks:
+      - kecy-network
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    container_name: kecyai-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../frontend/src:/app/src
+      - ../../frontend/public:/app/public
+    environment:
+      - VITE_API_URL=http://localhost:8080
+    depends_on:
+      - backend
+    networks:
+      - kecy-network
+
+networks:
+  kecy-network:
+    driver: bridge
+
+volumes:
+  kecyai-datasets:
+  kecyai-models:

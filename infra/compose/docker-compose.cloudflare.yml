@@ -1,0 +1,14 @@
+services:
+  frontend:
+    environment:
+      - VITE_API_PROXY_TARGET=http://backend:8080
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: kecyai-cloudflared
+    command: tunnel --no-autoupdate --url http://frontend:3000
+    depends_on:
+      - frontend
+    restart: unless-stopped
+    networks:
+      - kecy-network
