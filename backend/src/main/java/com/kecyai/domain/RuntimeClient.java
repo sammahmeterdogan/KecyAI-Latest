@@ -77,6 +77,24 @@ public interface RuntimeClient {
     /** Update hardware configuration on runtime. */
     Map<String, Object> setHardwareConfig(Map<String, Object> config);
 
+    /** Scan available MotorBus serial ports and include runtime console output. */
+    Map<String, Object> scanMotorPorts();
+
+    /** Start interactive motor setup session (lerobot-setup-motors). */
+    Map<String, Object> startMotorSetupSession(Map<String, Object> config);
+
+    /** Get current motor setup session status. */
+    Map<String, Object> getMotorSetupSessionStatus();
+
+    /** Send Enter key press to running motor setup process. */
+    Map<String, Object> sendMotorSetupEnter(Map<String, Object> payload);
+
+    /** Stop the current motor setup session. */
+    Map<String, Object> stopMotorSetupSession();
+
+    /** Read motor setup logs (tail or incremental via cursor). */
+    Map<String, Object> getMotorSetupLogs(Integer since, Integer tail);
+
 // ----------------------------------------------------------------
 
     Map<String, Object> startRecording(Map<String, Object> config);

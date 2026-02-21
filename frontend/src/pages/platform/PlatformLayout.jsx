@@ -5,7 +5,7 @@ import PlatformSidebar from '../../components/platform/PlatformSidebar';
 import PlatformBackground from '../../components/backgrounds/PlatformBackground';
 
 /* Routes that render full-bleed (no glass card, no padding) */
-const FULL_BLEED_PREFIXES = ['/kecy/platform/teleop'];
+const FULL_BLEED_PREFIXES = [];
 
 export default function PlatformLayout() {
     const [capabilities, setCapabilities] = useState([]);

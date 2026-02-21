@@ -17,7 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "runtime.autostart")
 public class RuntimeProperties {
 
-    /** Master switch â€” false by default (safe). */
+    /** Master switch — false by default (safe). */
     private boolean enabled = false;
 
     /** Max seconds to wait for runtime health after docker start. */
@@ -26,3 +26,5 @@ public class RuntimeProperties {
     /** Docker container name to start (must exist from prior compose up). */
     private String containerName = "kecyai-runtime";
 }
+
+

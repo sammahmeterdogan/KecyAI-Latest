@@ -31,7 +31,7 @@
 
 ## Commit & Pull Request Guidelines
 - This repo does not include Git history or a formal commit convention.
-  - Use short, imperative commit subjects (example: â€œAdd runtime health check endpointâ€).
+  - Use short, imperative commit subjects (example: “Add runtime health check endpoint”).
 - PRs should include:
   - Clear summary and scope.
   - Test status (commands run and results).
@@ -40,3 +40,5 @@
 ## Security & Configuration Tips
 - Autostarting the runtime requires mounting the Docker socket; use only in trusted dev environments.
   - See `docs/guides/zero_terminal_setup.md` for autostart notes and env flags.
+
+

@@ -344,6 +344,72 @@ public class HttpRuntimeClient implements RuntimeClient {
                 return postForMap("/admin/config", config);
         }
 
+        @Override
+        public Map<String, Object> scanMotorPorts() {
+                return webClient.get()
+                                .uri("/admin/ports/scan")
+                                .exchangeToMono(response -> {
+                                        if (response.statusCode().is2xxSuccessful()) {
+                                                return response.bodyToMono(MAP_TYPE)
+                                                                .defaultIfEmpty(Map.of());
+                                        }
+                                        return handleNon2xx(response);
+                                })
+                                .block();
+        }
+
+        @Override
+        public Map<String, Object> startMotorSetupSession(Map<String, Object> config) {
+                return postForMap("/admin/motors/setup/start", config != null ? config : Map.of());
+        }
+
+        @Override
+        public Map<String, Object> getMotorSetupSessionStatus() {
+                return webClient.get()
+                                .uri("/admin/motors/setup/status")
+                                .exchangeToMono(response -> {
+                                        if (response.statusCode().is2xxSuccessful()) {
+                                                return response.bodyToMono(MAP_TYPE)
+                                                                .defaultIfEmpty(Map.of());
+                                        }
+                                        return handleNon2xx(response);
+                                })
+                                .block();
+        }
+
+        @Override
+        public Map<String, Object> sendMotorSetupEnter(Map<String, Object> payload) {
+                return postForMap("/admin/motors/setup/enter", payload != null ? payload : Map.of());
+        }
+
+        @Override
+        public Map<String, Object> stopMotorSetupSession() {
+                return postForMapNoBody("/admin/motors/setup/stop");
+        }
+
+        @Override
+        public Map<String, Object> getMotorSetupLogs(Integer since, Integer tail) {
+                return webClient.get()
+                                .uri(uriBuilder -> {
+                                        var builder = uriBuilder.path("/admin/motors/setup/logs");
+                                        if (since != null) {
+                                                builder = builder.queryParam("since", since);
+                                        }
+                                        if (tail != null) {
+                                                builder = builder.queryParam("tail", tail);
+                                        }
+                                        return builder.build();
+                                })
+                                .exchangeToMono(response -> {
+                                        if (response.statusCode().is2xxSuccessful()) {
+                                                return response.bodyToMono(MAP_TYPE)
+                                                                .defaultIfEmpty(Map.of());
+                                        }
+                                        return handleNon2xx(response);
+                                })
+                                .block();
+        }
+
 // ----------------------------------------------------------------
         // Recording (POST + GET)
 // ----------------------------------------------------------------

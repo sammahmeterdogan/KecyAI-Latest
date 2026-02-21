@@ -1,10 +1,10 @@
-import SubPage from './SubPage';
+﻿import SubPage from './SubPage';
 
 export default function Documents() {
     return (
         <SubPage
             title="Documents"
-            description="Kurulum, donanÄ±m, runtime ve API rehberleri tek yerde. Bu sayfa KECY Platform arayÃ¼zÃ¼yle aynÄ± gÃ¶rsel tema ve yapÄ±yÄ± kullanÄ±r."
+            description="Kurulum, donanım, runtime ve API rehberleri tek yerde. Bu sayfa KECY Platform arayüzüyle aynı görsel tema ve yapıyı kullanır."
             sourceUrl="/documents"
             sourceLabel="KECY AI Documents"
         >
@@ -15,9 +15,9 @@ export default function Documents() {
                 marginTop: 4,
             }}>
                 {[
-                    { title: 'Kurulum', note: 'Docker, Windows, ilk Ã§alÄ±ÅŸtÄ±rma' },
+                    { title: 'Kurulum', note: 'Docker, Windows, ilk çalıştırma' },
                     { title: 'Runtime', note: 'LeRobot + ROS2 servisleri' },
-                    { title: 'API', note: 'Backend istekleri ve Ã¶rnekler' },
+                    { title: 'API', note: 'Backend istekleri ve örnekler' },
                     { title: 'Robot Kit', note: 'SO-ARM101, kalibrasyon, sorun giderme' },
                 ].map((item) => (
                     <div key={item.title} style={{

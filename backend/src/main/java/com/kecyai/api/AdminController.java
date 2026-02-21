@@ -66,6 +66,72 @@ public class AdminController {
         return ResponseEntity.ok(runtimeClient.getHardwareConfig());
     }
 
+    @GetMapping("/ports/scan")
+    public ResponseEntity<?> scanMotorPorts() {
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.scanMotorPorts());
+    }
+
+    @PostMapping("/motors/setup/start")
+    public ResponseEntity<?> startMotorSetup(@RequestBody(required = false) Map<String, Object> payload) {
+        String flow = payload != null && payload.get("flow") != null ? payload.get("flow").toString() : "";
+        String port = payload != null && payload.get("port") != null ? payload.get("port").toString() : "";
+
+        if (flow.isBlank()) {
+            return ResponseEntity.badRequest().body(ApiErrorResponse.of(
+                    "VALIDATION_ERROR",
+                    "Missing required field: 'flow' (follower|leader)"));
+        }
+        if (port.isBlank()) {
+            return ResponseEntity.badRequest().body(ApiErrorResponse.of(
+                    "VALIDATION_ERROR",
+                    "Missing required field: 'port'"));
+        }
+
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.startMotorSetupSession(Map.of(
+                "flow", flow,
+                "port", port
+        )));
+    }
+
+    @GetMapping("/motors/setup/status")
+    public ResponseEntity<?> getMotorSetupStatus() {
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.getMotorSetupSessionStatus());
+    }
+
+    @GetMapping("/motors/setup/logs")
+    public ResponseEntity<?> getMotorSetupLogs(
+            @RequestParam(required = false) Integer since,
+            @RequestParam(defaultValue = "200") Integer tail) {
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.getMotorSetupLogs(since, tail));
+    }
+
+    @PostMapping("/motors/setup/enter")
+    public ResponseEntity<?> sendMotorSetupEnter(@RequestBody(required = false) Map<String, Object> payload) {
+        int times = 1;
+        if (payload != null && payload.get("times") != null) {
+            try {
+                times = Integer.parseInt(payload.get("times").toString());
+            } catch (NumberFormatException e) {
+                return ResponseEntity.badRequest().body(ApiErrorResponse.of(
+                        "VALIDATION_ERROR",
+                        "'times' must be an integer"));
+            }
+        }
+
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.sendMotorSetupEnter(Map.of("times", times)));
+    }
+
+    @PostMapping("/motors/setup/stop")
+    public ResponseEntity<?> stopMotorSetup() {
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.stopMotorSetupSession());
+    }
+
     @PostMapping("/config")
     public ResponseEntity<?> setHardwareConfig(@RequestBody(required = false) HardwareConfigRequest payload) {
         if (payload == null) {

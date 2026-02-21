@@ -13,6 +13,9 @@ import {
     CalibrationStatus,
     CalibrationStartRequest,
     CalibrationStepResponse,
+    AdminPortScanResponse,
+    MotorSetupStatus,
+    MotorSetupLogsResponse,
 } from '../../types/lerobot';
 
 const API_BASE = '/api/lerobot';
@@ -279,6 +282,55 @@ export class LeRobotClient {
             method: 'POST',
             body: JSON.stringify(config),
         });
+    }
+
+    /** Run motor port scan via runtime (lerobot-find-port + fallback enumeration). */
+    static async adminScanMotorPorts(): Promise<AdminPortScanResponse> {
+        return this.fetch<AdminPortScanResponse>('/admin/ports/scan', { timeout: 15000 });
+    }
+
+    /** Start interactive motor setup session in runtime. */
+    static async adminMotorSetupStart(payload: {
+        flow: 'follower' | 'leader';
+        port: string;
+    }): Promise<MotorSetupStatus> {
+        return this.fetch<MotorSetupStatus>('/admin/motors/setup/start', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            timeout: 20000,
+        });
+    }
+
+    /** Get motor setup session status. */
+    static async adminMotorSetupStatus(): Promise<MotorSetupStatus> {
+        return this.fetch<MotorSetupStatus>('/admin/motors/setup/status');
+    }
+
+    /** Send Enter input to motor setup process. */
+    static async adminMotorSetupEnter(times: number = 1): Promise<MotorSetupStatus> {
+        return this.fetch<MotorSetupStatus>('/admin/motors/setup/enter', {
+            method: 'POST',
+            body: JSON.stringify({ times }),
+        });
+    }
+
+    /** Stop active motor setup session. */
+    static async adminMotorSetupStop(): Promise<MotorSetupStatus> {
+        return this.fetch<MotorSetupStatus>('/admin/motors/setup/stop', {
+            method: 'POST',
+        });
+    }
+
+    /** Read motor setup logs incrementally or by tail. */
+    static async adminMotorSetupLogs(args?: {
+        since?: number;
+        tail?: number;
+    }): Promise<MotorSetupLogsResponse> {
+        const params = new URLSearchParams();
+        if (args?.since !== undefined) params.set('since', String(args.since));
+        if (args?.tail !== undefined) params.set('tail', String(args.tail));
+        const suffix = params.toString() ? `?${params.toString()}` : '';
+        return this.fetch<MotorSetupLogsResponse>(`/admin/motors/setup/logs${suffix}`, { timeout: 10000 });
     }
 
     /** List all calibration artifacts. */

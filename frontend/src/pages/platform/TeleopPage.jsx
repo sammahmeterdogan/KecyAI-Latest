@@ -29,6 +29,8 @@ export default function TeleopPage() {
   const [dryRun, setDryRun] = useState(false);
   const [commandError, setCommandError] = useState('');
   const [estopActive, setEstopActive] = useState(false);
+  const [portScan, setPortScan] = useState(null);
+  const [portScanLoading, setPortScanLoading] = useState(false);
 
   const jointTimersRef = useRef({});
   const startTimeRef = useRef(Date.now());
@@ -67,14 +69,36 @@ export default function TeleopPage() {
     }
   }, []);
 
+  const handleScanPorts = useCallback(async () => {
+    setPortScanLoading(true);
+    try {
+      const result = await lerobotClient.adminScanMotorPorts();
+      setPortScan(result);
+    } catch (error) {
+      const message = error?.body?.message || error?.message || 'Failed to scan ports';
+      setPortScan({
+        status: 'error',
+        ports: [],
+        source: 'backend',
+        message,
+        stdout: [],
+        stderr: [],
+        exit_code: null,
+      });
+    } finally {
+      setPortScanLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     updateRuntimeState();
+    handleScanPorts();
     const interval = setInterval(updateRuntimeState, 3000);
     return () => {
       clearInterval(interval);
       Object.keys(jointTimersRef.current).forEach((id) => clearTimeout(jointTimersRef.current[id]));
     };
-  }, [updateRuntimeState]);
+  }, [updateRuntimeState, handleScanPorts]);
 
   /* ── SSE Telemetry ── */
   useEffect(() => {
@@ -310,6 +334,9 @@ export default function TeleopPage() {
           commandError={commandError}
           onDismissError={() => setCommandError('')}
           estopActive={estopActive}
+          portScan={portScan}
+          portScanLoading={portScanLoading}
+          onScanPorts={handleScanPorts}
         />
       </div>
 

@@ -1,4 +1,4 @@
-/* Shared subpage template for all platform subpages */
+﻿/* Shared subpage template for all platform subpages */
 export default function SubPage({ title, description, sourceUrl, sourceLabel, children }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -40,7 +40,7 @@ export default function SubPage({ title, description, sourceUrl, sourceLabel, ch
                     wordBreak: 'break-all',
                 }} onMouseEnter={(e) => { e.currentTarget.style.color = '#fff'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = '#cecafb'; }}>
-                    {sourceLabel || sourceUrl} ↗
+                    {sourceLabel || sourceUrl} →
                 </a>
             </div>
 
@@ -49,7 +49,7 @@ export default function SubPage({ title, description, sourceUrl, sourceLabel, ch
                 fontFamily: "'berkeleymonotrial-regular', monospace",
                 fontSize: 12, color: '#555', fontStyle: 'italic', marginTop: 4,
             }}>
-                İçerik upstream kaynaklardan aktarılacaktır.
+                İçerik upstream kaynaklardan özetlenmiştir.
             </div>
         </div>
     );

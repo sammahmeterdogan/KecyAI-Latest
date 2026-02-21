@@ -1,34 +1,39 @@
-# KECY AI Infrastructure
+﻿# KECY AI Infrastructure
 
 Docker Compose setup for the KECY AI platform.
 
-Compose files live under [`infra/compose/`](./compose).
+Compose files live under `infra/compose/`.
 
 ## Services
 
 | Service | Port | Description |
 |---|---|---|
-| **runtime** | 8100 | LeRobot runtime (Python/Docker) |
-| **backend** | 8080 | Spring Boot API |
+| `runtime` | 8100 | Python runtime (LeRobot integration) |
+| `backend` | 8080 | Spring Boot gateway API |
+| `frontend` | 3000 | React web UI |
+
+## Compose Profiles (by file overlay)
+
+- Base: `docker-compose.yml`
+- Hardware: `docker-compose.hardware.yml`
+- Backend runtime autostart: `docker-compose.autostart.yml`
+- Cloudflare demo: `docker-compose.cloudflare.yml`
 
 ## Usage
 
-1. **Copy environment file**:
-   ```bash
-   cp infra/.env.example infra/.env
-   ```
+```bash
+docker compose -f infra/compose/docker-compose.yml up --build
+```
 
-2. **Start services**:
-   ```bash
-   docker compose -f infra/compose/docker-compose.yml up --build
-   ```
+Hardware mode (Linux/WSL2):
 
-3. **Hardware overlay (Linux/WSL2)**:
-   ```bash
-   docker compose -f infra/compose/docker-compose.yml \
-                  -f infra/compose/docker-compose.hardware.yml up -d
-   ```
+```bash
+docker compose -f infra/compose/docker-compose.yml \
+               -f infra/compose/docker-compose.hardware.yml up -d
+```
 
-4. **Verify**:
-   - Runtime: `http://localhost:8100/health`
-   - Backend: `http://localhost:8080/api/lerobot/health`
+## Health Checks
+
+- Runtime: `http://localhost:8100/health`
+- Backend: `http://localhost:8080/api/lerobot/health`
+- Frontend: `http://localhost:3000`

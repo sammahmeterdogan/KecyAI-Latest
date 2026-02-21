@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sliders, Activity, TrendingUp, Settings, Layers, MonitorPlay, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Sliders, Activity, TrendingUp, ChevronRight, RefreshCw, Usb } from 'lucide-react';
 import ConnectionPill from './ConnectionPill';
 import JointCard from './JointCard';
 import EStopButton from './EStopButton';
@@ -26,7 +26,15 @@ const ControlPanel = ({
     commandError,
     onDismissError,
     estopActive,
+    portScan,
+    portScanLoading,
+    onScanPorts,
 }) => {
+    const consoleLines = [
+        ...(Array.isArray(portScan?.stdout) ? portScan.stdout : []),
+        ...(Array.isArray(portScan?.stderr) ? portScan.stderr.map((line) => `[stderr] ${line}`) : []),
+    ];
+
     return (
         <div className="flex flex-col h-full bg-black/60 backdrop-blur-xl border-r border-white/10 relative">
             {/* ─── TOP BAR (Left Side) ─── */}
@@ -165,6 +173,59 @@ const ControlPanel = ({
                         <div className="w-2 h-2 rounded-full bg-white/20" />
                         RESET POSE
                     </button>
+                </div>
+
+                {/* Motor Port Scanner */}
+                <div className="group relative">
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-white/5 to-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-sm" />
+                    <div className="relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col transition-all duration-300 hover:border-white/20">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/30">
+                            <div className="flex items-center gap-2">
+                                <Usb className="w-4 h-4 text-white/50" strokeWidth={2.5} />
+                                <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Configure Motors</span>
+                            </div>
+                            <button
+                                onClick={onScanPorts}
+                                disabled={portScanLoading}
+                                className="px-3 py-1 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-bold text-white/50 hover:text-white/80 transition-all border border-white/10 hover:border-white/20 cursor-pointer disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
+                            >
+                                <RefreshCw className={`w-3 h-3 ${portScanLoading ? 'animate-spin' : ''}`} />
+                                {portScanLoading ? 'SCANNING' : 'REFRESH'}
+                            </button>
+                        </div>
+
+                        <div className="p-3 space-y-3 font-mono text-[11px]">
+                            <div className="text-white/50">
+                                {portScan?.message ?? 'Scan to read MotorBus ports from LeRobot runtime.'}
+                            </div>
+
+                            {Array.isArray(portScan?.ports) && portScan.ports.length > 0 ? (
+                                <div className="space-y-1">
+                                    {portScan.ports.map((port) => (
+                                        <div key={port} className="px-2 py-1 rounded-md bg-emerald-500/5 text-emerald-300/90 border-l-2 border-emerald-500/30">
+                                            {port}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="px-2 py-1 rounded-md bg-amber-500/5 text-amber-300/90 border-l-2 border-amber-500/30">
+                                    No ports found. Connect MotorBus then press REFRESH.
+                                </div>
+                            )}
+
+                            <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                                {consoleLines.length === 0 ? (
+                                    <div className="text-white/25">No runtime console output yet.</div>
+                                ) : (
+                                    consoleLines.slice(-12).map((line, i) => (
+                                        <div key={`${i}-${line}`} className="text-white/35">
+                                            {line}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Logs */}

@@ -174,7 +174,7 @@ mvn test
 
 ### Security Notes
 
-- Runtime autostart requires Docker socket mountingâ€”use only in trusted environments
+- Runtime autostart requires Docker socket mounting—use only in trusted environments
 - See `docs/guides/zero_terminal_setup.md` for autostart configuration
 
 ---
@@ -225,3 +225,5 @@ docs/
 | Runtime fails to start | Verify Docker socket permissions; check `DEVICE` env var |
 | Cloudflare tunnel not working | Run `docker logs kecyai-cloudflared` for tunnel URL |
 | Build fails on Windows | Use WSL2 or ensure Docker Desktop is running with WSL2 backend |
+
+

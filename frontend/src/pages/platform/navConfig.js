@@ -1,8 +1,9 @@
-export const NAV_CONFIG = [
+﻿export const NAV_CONFIG = [
     {
         section: 'SO-101',
         items: [
             { label: 'Genel Bakış', path: '/kecy/platform', sourceUrl: 'https://huggingface.co/docs/lerobot/so101' },
+            { label: 'Kılavuz', path: '/kecy/platform/kilavuz', sourceUrl: 'https://huggingface.co/docs/lerobot/so101#so-101' },
             { label: 'Parça Listesi', path: '/kecy/platform/parca-listesi', sourceUrl: 'https://huggingface.co/docs/lerobot/so101#source-the-parts' },
             { label: 'Montaj', path: '/kecy/platform/montaj', sourceUrl: 'https://huggingface.co/docs/lerobot/so101#step-by-step-assembly-instructions' },
             { label: 'Motor Ayarları', path: '/kecy/platform/motor-ayarlar', sourceUrl: 'https://huggingface.co/docs/lerobot/so101#configure-the-motors' },

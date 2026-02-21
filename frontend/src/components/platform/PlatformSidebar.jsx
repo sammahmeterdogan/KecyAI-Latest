@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -39,6 +39,7 @@ const FALLBACK_SECTIONS = [
         id: 'main',
         items: [
             { id: 'genel', name: 'Genel Bakış', icon: LayoutDashboard, to: '/kecy/platform' },
+            { id: 'kilavuz', name: 'Kılavuz', icon: LayoutDashboard, to: '/kecy/platform/kilavuz' },
             { id: 'parca', name: 'Parça Listesi', icon: List, to: '/kecy/platform/parca-listesi' },
             { id: 'montaj', name: 'Montaj', icon: Wrench, to: '/kecy/platform/montaj' },
             { id: 'motor', name: 'Motor Ayarları', icon: Settings, to: '/kecy/platform/motor-ayarlar' },

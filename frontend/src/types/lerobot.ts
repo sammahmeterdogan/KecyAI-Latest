@@ -129,3 +129,53 @@ export interface CalibrationStepResponse {
     artifact_path?: string;
     dry_run: boolean;
 }
+
+export interface AdminPortScanResponse {
+    status: 'ok' | 'warning' | 'empty' | 'error';
+    ports: string[];
+    source: 'lerobot_find_port' | 'fallback_enumeration' | string;
+    message: string;
+    stdout: string[];
+    stderr: string[];
+    exit_code: number | null;
+}
+
+export interface MotorSetupStep {
+    key: string;
+    id: number;
+    status: 'pending' | 'in_progress' | 'completed' | 'failed' | string;
+    error?: string;
+}
+
+export interface MotorSetupStatus {
+    state: 'idle' | 'running' | 'stopping' | 'stopped' | 'completed' | 'failed' | string;
+    session_id: string;
+    flow: 'follower' | 'leader' | string;
+    port: string;
+    started_at?: number | null;
+    ended_at?: number | null;
+    exit_code?: number | null;
+    last_error?: string;
+    running?: boolean;
+    command?: string[];
+    current_step_index: number;
+    total_steps: number;
+    current_step?: MotorSetupStep | null;
+    steps: MotorSetupStep[];
+    next_log_index?: number;
+}
+
+export interface MotorSetupLogEntry {
+    idx: number;
+    ts: string;
+    stream: 'stdout' | 'stderr' | 'system' | string;
+    line: string;
+}
+
+export interface MotorSetupLogsResponse {
+    session_id: string;
+    state: string;
+    logs: MotorSetupLogEntry[];
+    next_index: number;
+    dropped_until: number;
+}

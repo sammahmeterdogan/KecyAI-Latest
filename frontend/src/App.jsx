@@ -18,6 +18,7 @@ import Pi0 from './pages/platform/Pi0';
 import CapabilityView from './pages/platform/CapabilityView';
 import AdminPage from './pages/platform/AdminPage';
 import Documents from './pages/platform/Documents';
+import Kilavuz from './pages/platform/Kilavuz';
 
 export default function App() {
     return (
@@ -29,11 +30,12 @@ export default function App() {
                 </Route>
                 <Route path="/kecy/platform" element={<PlatformLayout />}>
                     <Route index element={<Overview />} />
-                    <Route path="parca-listesi" element={<Parts />} />
-                    <Route path="montaj" element={<Assembly />} />
-                    <Route path="motor-ayarlar" element={<Motors />} />
-                    <Route path="kalibrasyon" element={<Calibration />} />
-                    <Route path="teleop" element={<Teleop />} />
+                <Route path="parca-listesi" element={<Parts />} />
+                <Route path="montaj" element={<Assembly />} />
+                <Route path="motor-ayarlar" element={<Motors />} />
+                <Route path="kalibrasyon" element={<Calibration />} />
+                <Route path="kilavuz" element={<Kilavuz />} />
+                <Route path="teleop" element={<Teleop />} />
                     <Route path="cameras" element={<Cameras />} />
                     <Route path="record" element={<Dataset />} />
                     <Route path="policy" element={<Training />} />

@@ -6,6 +6,7 @@ export default function Home() {
     const navigate = useNavigate();
 
     useEffect(() => {
+        let cleanupModal = () => {};
         // Set PeachWorlds initial path
         window._pwInitialPath = '/';
         // Minimal cache helpers expected by PeachWorlds runtime
@@ -51,6 +52,56 @@ export default function Home() {
                     script.remove();
                 });
 
+                // Hide broken logo assets to avoid broken image icons
+                containerRef.current.querySelectorAll('.contact-hide-on-error').forEach((img) => {
+                    img.onerror = () => {
+                        img.style.display = 'none';
+                    };
+                });
+
+                // Contact modal handlers
+                const modal = containerRef.current.querySelector('#contact-modal');
+                const openBtn = containerRef.current.querySelector('[data-contact-open]');
+                const closeBtns = containerRef.current.querySelectorAll('[data-contact-close]');
+                const statusEl = containerRef.current.querySelector('[data-contact-status]');
+                const formEl = containerRef.current.querySelector('#contact-form');
+
+                const openModal = () => {
+                    if (!modal) return;
+                    modal.classList.add('is-open');
+                    modal.setAttribute('aria-hidden', 'false');
+                };
+                const closeModal = () => {
+                    if (!modal) return;
+                    modal.classList.remove('is-open');
+                    modal.setAttribute('aria-hidden', 'true');
+                };
+                const escHandler = (e) => {
+                    if (e.key === 'Escape') closeModal();
+                };
+                const submitHandler = (e) => {
+                    e.preventDefault();
+                    if (statusEl) {
+                        statusEl.textContent = 'Mesajınız alındı. Teşekkürler!';
+                    }
+                    formEl?.reset();
+                    setTimeout(() => {
+                        if (statusEl) statusEl.textContent = '';
+                        closeModal();
+                    }, 1400);
+                };
+
+                if (openBtn) openBtn.addEventListener('click', openModal);
+                closeBtns.forEach((btn) => btn.addEventListener('click', closeModal));
+                if (modal) {
+                    modal.addEventListener('click', (e) => {
+                        const backdrop = modal.querySelector('.contact-modal__backdrop');
+                        if (e.target === backdrop) closeModal();
+                    });
+                }
+                if (formEl) formEl.addEventListener('submit', submitHandler);
+                document.addEventListener('keydown', escHandler);
+
                 // Load PeachWorlds runtime
                 if (!document.querySelector('script[src="/script.js"]')) {
                     const pwScript = document.createElement('script');
@@ -59,9 +110,17 @@ export default function Home() {
                     pwScript.fetchPriority = 'high';
                     document.head.appendChild(pwScript);
                 }
+
+                cleanupModal = () => {
+                    if (openBtn) openBtn.removeEventListener('click', openModal);
+                    closeBtns.forEach((btn) => btn.removeEventListener('click', closeModal));
+                    if (formEl) formEl.removeEventListener('submit', submitHandler);
+                    document.removeEventListener('keydown', escHandler);
+                };
             });
 
         return () => {
+            cleanupModal();
             // Cleanup: remove dynamically added scripts
             document.querySelectorAll('script[src="/script.js"]').forEach((s) => {
                 if (s.parentNode === document.head) s.remove();
