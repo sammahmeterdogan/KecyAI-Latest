@@ -16,6 +16,42 @@ export interface LeRobotHealth {
     service: string;
 }
 
+export interface RobotTemperature {
+    current: number | null;
+    max: number | null;
+}
+
+export interface RobotStatus {
+    name: string;
+    robot_type: 'manipulator' | 'mobile' | 'other';
+    device_name?: string | null;
+    temperature?: RobotTemperature[] | null;
+}
+
+export interface CameraStatus {
+    camera_id: number;
+    camera_type?: string;
+    is_active?: boolean;
+    width?: number | null;
+    height?: number | null;
+}
+
+export interface ServerStatus {
+    status: 'ok' | 'error';
+    name: string;
+    robots: string[];
+    robot_status: RobotStatus[];
+    cameras: {
+        cameras?: CameraStatus[];
+    };
+    version_id?: string;
+    is_recording: boolean;
+    ai_running_status: 'stopped' | 'running' | 'paused' | 'waiting';
+    leader_follower_status: boolean;
+    server_ip: string;
+    server_port: number;
+}
+
 export interface LeRobotVersion {
     lerobot_version: string;
     git_sha: string;
@@ -138,6 +174,29 @@ export interface AdminPortScanResponse {
     stdout: string[];
     stderr: string[];
     exit_code: number | null;
+}
+
+export interface LocalDevice {
+    name: string;
+    device: string;
+    serial_number?: string | null;
+    pid?: number | null;
+    interface?: string | null;
+}
+
+export interface ScanDevicesResponse {
+    devices: LocalDevice[];
+}
+
+export interface CalibrationResponse {
+    calibration_status: 'error' | 'success' | 'in_progress';
+    message: string;
+    current_step: number;
+    total_nb_steps: number;
+}
+
+export interface TorqueReadResponse {
+    current_torque: number[];
 }
 
 export interface MotorSetupStep {

@@ -250,6 +250,16 @@ public class HttpRuntimeClient implements RuntimeClient {
                 return postForMapNoBody("/teleop/estop/off");
         }
 
+        @Override
+        public Map<String, Object> readTorque(Integer robotId) {
+                return postForMap("/teleop/torque/read", Map.of());
+        }
+
+        @Override
+        public Map<String, Object> toggleTorque(Integer robotId, boolean torqueStatus) {
+                return postForMap("/teleop/torque/toggle", Map.of("torque_status", torqueStatus));
+        }
+
 // ----------------------------------------------------------------
         // Calibration
 // ----------------------------------------------------------------
@@ -420,8 +430,13 @@ public class HttpRuntimeClient implements RuntimeClient {
         }
 
         @Override
-        public Map<String, Object> stopRecording() {
-                return postForMapNoBody("/recording/stop");
+        public Map<String, Object> stopRecording(Map<String, Object> config) {
+                return postForMap("/recording/stop", config != null ? config : Map.of());
+        }
+
+        @Override
+        public Map<String, Object> replayRecording(Map<String, Object> config) {
+                return postForMap("/recording/replay", config != null ? config : Map.of());
         }
 
         @Override

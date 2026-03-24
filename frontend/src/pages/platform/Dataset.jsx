@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { LeRobotClient } from '../../lib/api/lerobotClient';
-import { Circle, StopCircle, RefreshCw, Database, Clock, Film, HardDrive } from 'lucide-react';
+import { Circle, StopCircle, RefreshCw, Database, Clock, Film, HardDrive, Trash2, Play } from 'lucide-react';
 
 const STATUS_COLORS = { idle: '#6b7280', recording: '#ef4444' };
 
@@ -71,9 +71,36 @@ export default function Dataset() {
         setError(null);
         setLoading(true);
         try {
-            const result = await LeRobotClient.recordingStop();
+            const result = await LeRobotClient.recordingStop(true);
             setStatus(result);
             fetchDatasets();
+        } catch (e) {
+            setError(e.body || { message: e.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDiscard = async () => {
+        if (!window.confirm('Bu kaydı iptal etmek istediğinize emin misiniz? Veriler silinecek.')) return;
+        setError(null);
+        setLoading(true);
+        try {
+            const result = await LeRobotClient.recordingDiscard();
+            setStatus(result);
+            fetchDatasets();
+        } catch (e) {
+            setError(e.body || { message: e.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleReplay = async () => {
+        setError(null);
+        setLoading(true);
+        try {
+            await LeRobotClient.recordingReplay(-1);
         } catch (e) {
             setError(e.body || { message: e.message });
         } finally {
@@ -179,27 +206,54 @@ export default function Dataset() {
 
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                     {!isRecording ? (
-                        <button onClick={handleStart} disabled={loading}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '0.6rem 1.5rem', borderRadius: 8, border: 'none',
-                                background: '#dc2626', color: '#fff', fontWeight: 600,
-                                cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1,
-                                fontSize: '0.85rem',
-                            }}>
-                            <Circle size={14} /> Kayıt Başlat
-                        </button>
+                        <>
+                            <button onClick={handleStart} disabled={loading}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    padding: '0.6rem 1.5rem', borderRadius: 8, border: 'none',
+                                    background: '#dc2626', color: '#fff', fontWeight: 600,
+                                    cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1,
+                                    fontSize: '0.85rem',
+                                }}>
+                                <Circle size={14} /> Kayıt Başlat
+                            </button>
+                            {datasets.length > 0 && (
+                                <button onClick={handleReplay} disabled={loading}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '0.6rem 1.25rem', borderRadius: 8, border: 'none',
+                                        background: '#1e3a5f', color: '#60a5fa', fontWeight: 600,
+                                        cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1,
+                                        fontSize: '0.85rem',
+                                    }}>
+                                    <Play size={14} /> Tekrar Oynat
+                                </button>
+                            )}
+                        </>
                     ) : (
-                        <button onClick={handleStop} disabled={loading}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '0.6rem 1.5rem', borderRadius: 8, border: 'none',
-                                background: '#374151', color: '#fff', fontWeight: 600,
-                                cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1,
-                                fontSize: '0.85rem',
-                            }}>
-                            <StopCircle size={14} /> Kaydı Durdur
-                        </button>
+                        <>
+                            <button onClick={handleStop} disabled={loading}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    padding: '0.6rem 1.5rem', borderRadius: 8, border: 'none',
+                                    background: '#374151', color: '#fff', fontWeight: 600,
+                                    cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1,
+                                    fontSize: '0.85rem',
+                                }}>
+                                <StopCircle size={14} /> Kaydet ve Durdur
+                            </button>
+                            <button onClick={handleDiscard} disabled={loading}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    padding: '0.6rem 1.25rem', borderRadius: 8,
+                                    background: 'transparent', border: '1px solid #dc2626',
+                                    color: '#ef4444', fontWeight: 600,
+                                    cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1,
+                                    fontSize: '0.85rem',
+                                }}>
+                                <Trash2 size={14} /> İptal Et
+                            </button>
+                        </>
                     )}
                     <button onClick={() => { fetchStatus(); fetchDatasets(); }}
                         style={{

@@ -179,6 +179,25 @@ public class TeleopController {
     }
 
     // ----------------------------------------------------------------
+    // Torque
+    // ----------------------------------------------------------------
+
+    @PostMapping("/torque/read")
+    public ResponseEntity<?> readTorque(@RequestParam(required = false) Integer robot_id) {
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.readTorque(robot_id));
+    }
+
+    @PostMapping("/torque/toggle")
+    public ResponseEntity<?> toggleTorque(@RequestBody Map<String, Object> payload) {
+        boolean torqueStatus = payload != null && Boolean.TRUE.equals(payload.get("torque_status"));
+        Integer robotId = payload != null && payload.get("robot_id") != null
+                ? Integer.valueOf(payload.get("robot_id").toString()) : null;
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.toggleTorque(robotId, torqueStatus));
+    }
+
+    // ----------------------------------------------------------------
     // Telemetry Stream (SSE)
     // ----------------------------------------------------------------
 

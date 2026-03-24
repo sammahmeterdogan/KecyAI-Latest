@@ -312,6 +312,20 @@ class TeleopManager:
         self._append_log("E-STOP released")
         return result
 
+    # ───────────── Torque ─────────────
+
+    def read_torque(self) -> Dict[str, Any]:
+        """Read motor torque values. Returns mock data in dry-run mode."""
+        if self.adapter.is_connected():
+            joints = self.adapter.get_joint_state()
+            return {"current_torque": [j.get("torque", 0) for j in joints.get("joints", [])]}
+        return {"current_torque": []}
+
+    def toggle_torque(self, enabled: bool) -> Dict[str, Any]:
+        """Enable or disable motor torque. No-op in dry-run mode."""
+        self._append_log(f"Torque {'enabled' if enabled else 'disabled'}")
+        return {"status": "ok", "torque_status": enabled}
+
     # ───────────── Joint Commands ─────────────
 
     def _check_preconditions(self):

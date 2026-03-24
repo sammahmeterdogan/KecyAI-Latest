@@ -769,6 +769,41 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     "message": str(e),
                 })
 
+        # ─── Torque ───
+
+        elif path == "/teleop/torque/read":
+            try:
+                mgr = get_manager()
+                torque_data = mgr.read_torque() if hasattr(mgr, 'read_torque') else {"current_torque": []}
+                self._respond(200, torque_data)
+            except Exception as e:
+                self._respond(500, {
+                    "code": "RUNTIME_ERROR",
+                    "message": str(e),
+                })
+
+        elif path == "/teleop/torque/toggle":
+            try:
+                data = self._read_body()
+                torque_status = data.get("torque_status")
+                if torque_status is None:
+                    self._respond(400, {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Missing required field: 'torque_status' (boolean)",
+                    })
+                    return
+                mgr = get_manager()
+                if hasattr(mgr, 'toggle_torque'):
+                    result = mgr.toggle_torque(bool(torque_status))
+                else:
+                    result = {"status": "ok", "torque_status": bool(torque_status), "message": "Torque toggle not available in dry-run mode"}
+                self._respond(200, result)
+            except Exception as e:
+                self._respond(500, {
+                    "code": "RUNTIME_ERROR",
+                    "message": str(e),
+                })
+
         # ─── Admin / Preflight (POST) ───
 
         elif path == "/admin/calibration/select":
@@ -1084,7 +1119,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
 
         elif path == "/recording/stop":
             try:
-                result = get_recording_manager().stop()
+                data = self._read_body()
+                save = data.get("save", True) if data else True
+                result = get_recording_manager().stop(save=save)
                 self._respond(200, result)
             except Exception as e:
                 self._respond(500, {
@@ -1092,6 +1129,27 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     "message": f"Failed to stop recording: {str(e)}",
                     "details": [],
                 })
+
+        elif path == "/recording/replay":
+            try:
+                data = self._read_body()
+                episode_index = data.get("episode_index", -1) if data else -1
+                result = get_recording_manager().replay(episode_index=episode_index)
+                self._respond(200, result)
+            except Exception as e:
+                exc_name = type(e).__name__
+                if exc_name == "ConflictError":
+                    self._respond(409, {
+                        "code": "CONFLICT",
+                        "message": str(e),
+                        "currentStatus": getattr(e, "current_status", {}),
+                    })
+                else:
+                    self._respond(500, {
+                        "code": "RUNTIME_ERROR",
+                        "message": f"Failed to replay recording: {str(e)}",
+                        "details": [],
+                    })
 
         # ─── Training (POST) ───
 

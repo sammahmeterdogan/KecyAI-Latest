@@ -42,6 +42,12 @@ public interface RuntimeClient {
     /** Release emergency stop. */
     Map<String, Object> estopOff();
 
+    /** Read current motor torque values. */
+    Map<String, Object> readTorque(Integer robotId);
+
+    /** Enable or disable motor torque. */
+    Map<String, Object> toggleTorque(Integer robotId, boolean torqueStatus);
+
     /**
      * Subscribe to realtime telemetry stream.
      */
@@ -99,7 +105,9 @@ public interface RuntimeClient {
 
     Map<String, Object> startRecording(Map<String, Object> config);
 
-    Map<String, Object> stopRecording();
+    Map<String, Object> stopRecording(Map<String, Object> config);
+
+    Map<String, Object> replayRecording(Map<String, Object> config);
 
     Map<String, Object> getRecordingStatus();
 

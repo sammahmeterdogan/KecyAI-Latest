@@ -5,12 +5,17 @@ import JointCard from './JointCard';
 import EStopButton from './EStopButton';
 import MetricTile from './MetricTile';
 import LogViewer from './LogViewer';
+import ModeTabs from './ModeTabs';
+import KeyboardControlTab from './KeyboardControlTab';
 
 const ControlPanel = ({
     connectionState,
     telemetry,
     dryRun,
     isConnected,
+    robots,
+    selectedRobotId,
+    onSelectRobot,
     joints,
     sensitivity,
     setSensitivity,
@@ -29,11 +34,15 @@ const ControlPanel = ({
     portScan,
     portScanLoading,
     onScanPorts,
+    activeModeTab,
+    onModeTabChange,
+    keyboardControl,
 }) => {
     const consoleLines = [
         ...(Array.isArray(portScan?.stdout) ? portScan.stdout : []),
         ...(Array.isArray(portScan?.stderr) ? portScan.stderr.map((line) => `[stderr] ${line}`) : []),
     ];
+    const showJointsTab = activeModeTab === 'joints';
 
     return (
         <div className="flex flex-col h-full bg-black/60 backdrop-blur-xl border-r border-white/10 relative">
@@ -42,9 +51,21 @@ const ControlPanel = ({
                 <div className="flex items-center gap-3">
                     {/* Robot Selector */}
                     <div className="relative">
-                        <select className="bg-black/80 backdrop-blur-xl border border-white/20 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/40 transition-all hover:border-white/30 hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] appearance-none pr-8 cursor-pointer text-white">
-                            <option>SO_ARM101</option>
-                            <option>SO_ARM102</option>
+                        <select
+                            value={selectedRobotId}
+                            onChange={(event) => onSelectRobot(Number(event.target.value))}
+                            disabled={robots.length === 0 || isConnected}
+                            className="bg-black/80 backdrop-blur-xl border border-white/20 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/40 transition-all hover:border-white/30 hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] appearance-none pr-8 cursor-pointer text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {robots.length === 0 ? (
+                                <option value={0}>NO ROBOTS</option>
+                            ) : (
+                                robots.map((robot, index) => (
+                                    <option key={`${robot.name}-${robot.device_name ?? index}`} value={index}>
+                                        {robot.name.toUpperCase()} ({robot.device_name ?? 'NO PORT'})
+                                    </option>
+                                ))
+                            )}
                         </select>
                         <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent rounded-xl pointer-events-none" />
                         <ChevronRight className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-white/40 rotate-90 pointer-events-none" />
@@ -109,7 +130,7 @@ const ControlPanel = ({
             {connectionState === 'offline' && !commandError && (
                 <div className="mx-4 mt-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg shrink-0">
                     <span className="text-xs text-amber-400 font-mono">
-                        Runtime offline. Start with: docker compose up runtime
+                        Backend offline. Start the KECY AI runtime service on `127.0.0.1:8080`.
                     </span>
                 </div>
             )}
@@ -123,115 +144,143 @@ const ControlPanel = ({
                 </div>
             )}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 cyber-scrollbar">
-                {/* Telemetry Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                    <MetricTile icon={Activity} label="FPS" value={telemetry.fps.toFixed(0)} unit="hz" />
-                    <MetricTile icon={TrendingUp} label="Latency" value={telemetry.latency.toFixed(0)} unit="ms" />
-                </div>
+                <ModeTabs activeTab={activeModeTab} onChange={onModeTabChange} />
 
-                {/* Joint Controls */}
-                <div className="space-y-3">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest flex items-center gap-2">
-                            <Sliders className="w-3 h-3" /> Joint Control
-                        </h3>
-                        <div className="flex bg-white/5 rounded-lg p-0.5">
-                            {['low', 'medium', 'high'].map(s => (
-                                <button
-                                    key={s}
-                                    onClick={() => setSensitivity(s)}
-                                    className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded-md transition-all ${sensitivity === s ? 'bg-white/20 text-white' : 'text-white/30 hover:text-white/60'
-                                        }`}
-                                >
-                                    {s}
-                                </button>
-                            ))}
+                {showJointsTab ? (
+                    <>
+                        {/* Telemetry Grid */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <MetricTile icon={Activity} label="FPS" value={telemetry.fps.toFixed(0)} unit="hz" />
+                            <MetricTile icon={TrendingUp} label="Latency" value={telemetry.latency.toFixed(0)} unit="ms" />
                         </div>
-                    </div>
 
-                    <div className="space-y-3">
-                        {joints.map(joint => (
-                            <JointCard
-                                key={joint.id}
-                                joint={joint}
-                                sensitivity={sensitivity}
-                                onUpdate={onJointUpdate}
-                                disabled={!isConnected || estopActive}
-                            />
-                        ))}
-                    </div>
-                </div>
-
-                {/* Global Actions */}
-                <div className="grid grid-cols-2 gap-3">
-                    <EStopButton onTrigger={onEStop} disabled={!isConnected} active={estopActive} />
-                    <button
-                        onClick={onReset}
-                        disabled={!isConnected}
-                        className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-sm font-bold text-white/60 hover:text-white transition-all hover:border-white/20 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                        <div className="w-2 h-2 rounded-full bg-white/20" />
-                        RESET POSE
-                    </button>
-                </div>
-
-                {/* Motor Port Scanner */}
-                <div className="group relative">
-                    <div className="absolute -inset-0.5 bg-gradient-to-r from-white/5 to-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-sm" />
-                    <div className="relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col transition-all duration-300 hover:border-white/20">
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/30">
-                            <div className="flex items-center gap-2">
-                                <Usb className="w-4 h-4 text-white/50" strokeWidth={2.5} />
-                                <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Configure Motors</span>
+                        {/* Joint Controls */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest flex items-center gap-2">
+                                    <Sliders className="w-3 h-3" /> Joint Control
+                                </h3>
+                                <div className="flex bg-white/5 rounded-lg p-0.5">
+                                    {['low', 'medium', 'high'].map(s => (
+                                        <button
+                                            key={s}
+                                            onClick={() => setSensitivity(s)}
+                                            className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded-md transition-all ${sensitivity === s ? 'bg-white/20 text-white' : 'text-white/30 hover:text-white/60'
+                                                }`}
+                                        >
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
+
+                            <div className="space-y-3">
+                                {joints.map(joint => (
+                                    <JointCard
+                                        key={joint.id}
+                                        joint={joint}
+                                        sensitivity={sensitivity}
+                                        onUpdate={onJointUpdate}
+                                        disabled={!isConnected || estopActive}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Global Actions */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <EStopButton onTrigger={onEStop} disabled={!isConnected} active={estopActive} />
                             <button
-                                onClick={onScanPorts}
-                                disabled={portScanLoading}
-                                className="px-3 py-1 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-bold text-white/50 hover:text-white/80 transition-all border border-white/10 hover:border-white/20 cursor-pointer disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
+                                onClick={onReset}
+                                disabled={!isConnected}
+                                className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-sm font-bold text-white/60 hover:text-white transition-all hover:border-white/20 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                <RefreshCw className={`w-3 h-3 ${portScanLoading ? 'animate-spin' : ''}`} />
-                                {portScanLoading ? 'SCANNING' : 'REFRESH'}
+                                <div className="w-2 h-2 rounded-full bg-white/20" />
+                                RESET POSE
                             </button>
                         </div>
 
-                        <div className="p-3 space-y-3 font-mono text-[11px]">
-                            <div className="text-white/50">
-                                {portScan?.message ?? 'Scan to read MotorBus ports from LeRobot runtime.'}
-                            </div>
-
-                            {Array.isArray(portScan?.ports) && portScan.ports.length > 0 ? (
-                                <div className="space-y-1">
-                                    {portScan.ports.map((port) => (
-                                        <div key={port} className="px-2 py-1 rounded-md bg-emerald-500/5 text-emerald-300/90 border-l-2 border-emerald-500/30">
-                                            {port}
-                                        </div>
-                                    ))}
+                        {/* Motor Port Scanner */}
+                        <div className="group relative">
+                            <div className="absolute -inset-0.5 bg-gradient-to-r from-white/5 to-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-sm" />
+                            <div className="relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col transition-all duration-300 hover:border-white/20">
+                                <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/30">
+                                    <div className="flex items-center gap-2">
+                                        <Usb className="w-4 h-4 text-white/50" strokeWidth={2.5} />
+                                        <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Configure Motors</span>
+                                    </div>
+                                    <button
+                                        onClick={onScanPorts}
+                                        disabled={portScanLoading}
+                                        className="px-3 py-1 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-bold text-white/50 hover:text-white/80 transition-all border border-white/10 hover:border-white/20 cursor-pointer disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
+                                    >
+                                        <RefreshCw className={`w-3 h-3 ${portScanLoading ? 'animate-spin' : ''}`} />
+                                        {portScanLoading ? 'SCANNING' : 'REFRESH'}
+                                    </button>
                                 </div>
-                            ) : (
-                                <div className="px-2 py-1 rounded-md bg-amber-500/5 text-amber-300/90 border-l-2 border-amber-500/30">
-                                    No ports found. Connect MotorBus then press REFRESH.
-                                </div>
-                            )}
 
-                            <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
-                                {consoleLines.length === 0 ? (
-                                    <div className="text-white/25">No runtime console output yet.</div>
-                                ) : (
-                                    consoleLines.slice(-12).map((line, i) => (
-                                        <div key={`${i}-${line}`} className="text-white/35">
-                                            {line}
+                                <div className="p-3 space-y-3 font-mono text-[11px]">
+                                    <div className="text-white/50">
+                                        {portScan?.message ?? 'Scan to read MotorBus ports from LeRobot runtime.'}
+                                    </div>
+
+                                    {Array.isArray(portScan?.ports) && portScan.ports.length > 0 ? (
+                                        <div className="space-y-1">
+                                            {portScan.ports.map((port) => (
+                                                <div key={port} className="px-2 py-1 rounded-md bg-emerald-500/5 text-emerald-300/90 border-l-2 border-emerald-500/30">
+                                                    {port}
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))
-                                )}
+                                    ) : (
+                                        <div className="px-2 py-1 rounded-md bg-amber-500/5 text-amber-300/90 border-l-2 border-amber-500/30">
+                                            No ports found. Connect MotorBus then press REFRESH.
+                                        </div>
+                                    )}
+
+                                    <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                                        {consoleLines.length === 0 ? (
+                                            <div className="text-white/25">No runtime console output yet.</div>
+                                        ) : (
+                                            consoleLines.slice(-12).map((line, i) => (
+                                                <div key={`${i}-${line}`} className="text-white/35">
+                                                    {line}
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                {/* Logs */}
-                <div className="h-48">
-                    <LogViewer logs={logs} onClear={onClearLogs} />
-                </div>
+                        {/* Logs */}
+                        <div className="h-48">
+                            <LogViewer logs={logs} onClear={onClearLogs} />
+                        </div>
+                    </>
+                ) : activeModeTab === 'keyboard' ? (
+                    <KeyboardControlTab
+                        isConnected={isConnected}
+                        estopActive={estopActive}
+                        isKeyboardActive={keyboardControl.isActive}
+                        keyboardSpeed={keyboardControl.speed}
+                        activeKeys={keyboardControl.activeKeys}
+                        onStart={keyboardControl.onStart}
+                        onStop={keyboardControl.onStop}
+                        onSpeedChange={keyboardControl.onSpeedChange}
+                        onKeyPress={keyboardControl.onKeyPress}
+                        onKeyRelease={keyboardControl.onKeyRelease}
+                    />
+                ) : (
+                    <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-xl">
+                        <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/40">
+                            {activeModeTab === 'leader-arm' ? 'Leader Arm' : activeModeTab}
+                        </div>
+                        <p className="mt-3 text-[11px] leading-5 text-white/45 font-mono">
+                            This tab is reserved for the next integration batch. The existing Joints workflow remains unchanged.
+                        </p>
+                    </div>
+                )}
             </div>
         </div >
     );

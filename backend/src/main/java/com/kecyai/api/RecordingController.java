@@ -24,9 +24,20 @@ public class RecordingController {
     }
 
     @PostMapping("/stop")
-    public ResponseEntity<?> stopRecording() {
+    public ResponseEntity<?> stopRecording(@RequestBody(required = false) Map<String, Object> body) {
         orchestrator.ensureRuntimeReady();
-        return ResponseEntity.ok(runtimeClient.stopRecording());
+        Map<String, Object> config = body != null ? body : Map.of("save", true);
+        if (!config.containsKey("save")) {
+            config = new java.util.LinkedHashMap<>(config);
+            config.put("save", true);
+        }
+        return ResponseEntity.ok(runtimeClient.stopRecording(config));
+    }
+
+    @PostMapping("/replay")
+    public ResponseEntity<?> replayRecording(@RequestBody(required = false) Map<String, Object> body) {
+        orchestrator.ensureRuntimeReady();
+        return ResponseEntity.ok(runtimeClient.replayRecording(body != null ? body : Map.of()));
     }
 
     @GetMapping("/status")

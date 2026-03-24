@@ -1,1028 +1,1212 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    Activity,
+    AlertTriangle,
+    ArrowRight,
+    Loader2,
+    Play,
+    RefreshCw,
+    RotateCcw,
+    Server,
+    Usb,
+} from 'lucide-react';
 import { lerobotClient } from '../../lib/api/lerobotClient';
+import calibrationPosition1 from '../../assets/calibration/CalibrationPosition1.jpg';
+import calibrationPosition2 from '../../assets/calibration/CalibrationPosition2.jpg';
+import styles from './TeleopControl.module.css';
 
-// ─── Durum renkleri ───
-const STATE_COLORS = {
-  idle: '#888',
-  running: '#4ecdc4',
-  completed: '#2ecc71',
-  stopped: '#e67e22',
-  offline: '#e74c3c',
-};
+const TAB_STORAGE_KEY = 'kecyai.calibration.active-tab';
+const HISTORY_POINTS = 32;
+const POSITION_LIMIT = 4095;
+const TORQUE_LIMIT = 200;
+const TERMINAL_LIMIT = 72;
+const ESTOP_HOLD_MS = 1100;
 
-const STATE_LABELS = {
-  idle: 'HAZIR',
-  running: 'DEVAM EDİYOR',
-  completed: 'TAMAMLANDI',
-  stopped: 'DURDURULDU',
-  offline: 'CEVRİMDISI',
-};
-
-const STEP_STATUS_LABELS = {
-  pending: 'bekliyor',
-  current: 'aktif',
-  completed: 'tamamlandi',
-};
-
-// ─── Sabit eklem listesi ───
-const JOINT_IDS = [
-  'shoulder_pan',
-  'shoulder_lift',
-  'elbow_flex',
-  'wrist_flex',
-  'wrist_roll',
-  'gripper',
+const JOINTS = [
+    { id: 1, label: 'JOINT 1' },
+    { id: 2, label: 'JOINT 2' },
+    { id: 3, label: 'JOINT 3' },
+    { id: 4, label: 'JOINT 4' },
+    { id: 5, label: 'JOINT 5' },
+    { id: 6, label: 'GRIPPER' },
 ];
 
-// ─── Deterministic dry-run fallback values ───
-const DRY_RUN_DEFAULTS = {
-  shoulder_pan: { min: -2.9845, pos: 0.0, max: 2.9845 },
-  shoulder_lift: { min: -1.4923, pos: 0.0, max: 1.4923 },
-  elbow_flex: { min: -2.0900, pos: 0.0, max: 2.0900 },
-  wrist_flex: { min: -2.9845, pos: 0.0, max: 2.9845 },
-  wrist_roll: { min: -2.9845, pos: 0.0, max: 2.9845 },
-  gripper: { min: 0.0000, pos: 0.0, max: 0.9500 },
+const STEP_CONTENT = {
+    1: {
+        id: 1,
+        title: 'PREPARE ROBOT',
+        description: 'Confirm the target robot, support the arm, and clear the workspace before torque is released.',
+        physical: [
+            'Keep one hand ready to support the arm.',
+            'Verify power and USB are both connected.',
+            'Confirm the correct robot and port before starting.',
+        ],
+        image: calibrationPosition1,
+        imageLabel: 'REFERENCE OVERVIEW',
+        imageCaption: 'Position 1 and Position 2 use the reference poses shown here. Match them closely before each backend step.',
+    },
+    2: {
+        id: 2,
+        title: 'POSITION 1',
+        description: 'Move the arm forward and fully close the gripper. The moving claw should sit on the left side.',
+        physical: [
+            'Bring the arm forward into the shown pose.',
+            'Close the gripper completely.',
+            'Keep the base steady before advancing.',
+        ],
+        image: calibrationPosition1,
+        imageLabel: 'REFERENCE POSITION 1',
+        imageCaption: 'Arm forward. Gripper fully closed. Moving claw on the left side of the arm.',
+    },
+    3: {
+        id: 3,
+        title: 'POSITION 2',
+        description: 'Twist the arm left and fully open the gripper so the backend can solve the second calibration pose.',
+        physical: [
+            'Rotate the arm left into the shown pose.',
+            'Open the gripper completely.',
+            'Hold the pose steady while the backend finishes.',
+        ],
+        image: calibrationPosition2,
+        imageLabel: 'REFERENCE POSITION 2',
+        imageCaption: 'Arm twisted left. Gripper fully open. Hold this pose until the backend responds.',
+    },
 };
 
-function formatNum(v) {
-  if (v == null) return '\u2014';
-  const n = Number(v);
-  if (isNaN(n)) return '\u2014';
-  return Number.isInteger(n) ? String(n) : n.toFixed(3);
+const PILL_TONES = {
+    neutral: 'border-white/10 bg-white/5 text-white/72',
+    ok: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-200',
+    warn: 'border-amber-500/30 bg-amber-500/12 text-amber-100',
+    error: 'border-red-500/30 bg-red-500/12 text-red-100',
+};
+
+function joinClasses(...values) {
+    return values.filter(Boolean).join(' ');
+}
+
+function getInitialTab() {
+    if (typeof window === 'undefined') return 'calibration';
+    const stored = window.localStorage.getItem(TAB_STORAGE_KEY);
+    return stored === 'joints' ? 'joints' : 'calibration';
+}
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function createPositionHistory(initialValues) {
+    return initialValues.map((value) =>
+        Array.from({ length: HISTORY_POINTS }, (_, index) => ({
+            x: index,
+            actual: value,
+            goal: value,
+        })),
+    );
+}
+
+function createTorqueHistory(initialValues) {
+    return initialValues.map((value) =>
+        Array.from({ length: HISTORY_POINTS }, (_, index) => ({
+            x: index,
+            value,
+        })),
+    );
+}
+
+function buildPath(values, min, max, accessor) {
+    const points = values.map((point, index) => {
+        const x = values.length === 1 ? 0 : (index / (values.length - 1)) * 100;
+        const raw = accessor(point);
+        const normalized = max === min ? 0.5 : (raw - min) / (max - min);
+        const y = 52 - clamp(normalized, 0, 1) * 52;
+        return `${x},${y}`;
+    });
+    return `M ${points.join(' L ')}`;
+}
+
+function formatTimestamp(date = new Date()) {
+    return date.toLocaleTimeString([], { hour12: false });
+}
+
+function resolveRobotDevice(robot, devices, index) {
+    if (!robot) return devices[index] ?? devices[0] ?? null;
+
+    return (
+        devices.find((device) =>
+            [device.serial_number, device.device, device.name].some(
+                (value) => typeof value === 'string' && value === robot.device_name,
+            ),
+        ) ??
+        devices.find((device) => device.name === robot.name) ??
+        devices[index] ??
+        devices[0] ??
+        null
+    );
+}
+
+function formatRobotName(name) {
+    return (name || 'Unknown Robot').toUpperCase();
+}
+
+function formatRobotLabel(robot, device) {
+    const name = formatRobotName(robot?.name);
+    const port = device?.device || robot?.device_name || 'NO PORT';
+    return `${name} · ${port}`;
+}
+
+function toneClass(tone) {
+    return (
+        {
+            neutral: 'text-white/70',
+            ok: 'text-emerald-200',
+            warn: 'text-amber-100',
+            error: 'text-red-100',
+        }[tone] || 'text-white/70'
+    );
+}
+
+function PanelFrame({ className = '', children }) {
+    return (
+        <section
+            className={joinClasses(
+                styles.glassCard,
+                styles.fadeInItem,
+                'rounded-[1.55rem] border border-white/10 bg-black/72 shadow-[0_18px_48px_rgba(0,0,0,0.32)] backdrop-blur-xl',
+                className,
+            )}
+        >
+            {children}
+        </section>
+    );
+}
+
+function StatusPill({ tone = 'neutral', children, className = '' }) {
+    return (
+        <span
+            className={joinClasses(
+                'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
+                PILL_TONES[tone],
+                className,
+            )}
+        >
+            {children}
+        </span>
+    );
+}
+
+function InfoRow({ label, value, tone = 'text-white/78' }) {
+    return (
+        <div className="flex items-start justify-between gap-3 border-b border-white/8 py-2.5 last:border-b-0 last:pb-0">
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">{label}</div>
+            <div className={joinClasses('text-right font-mono text-xs leading-6', tone)}>{value}</div>
+        </div>
+    );
+}
+
+function MiniChart({ data, mode }) {
+    const min = mode === 'position' ? 0 : -TORQUE_LIMIT;
+    const max = mode === 'position' ? POSITION_LIMIT : TORQUE_LIMIT;
+    const primaryPath = buildPath(
+        data,
+        min,
+        max,
+        mode === 'position' ? (point) => point.actual : (point) => point.value,
+    );
+    const goalPath =
+        mode === 'position'
+            ? buildPath(data, min, max, (point) => point.goal)
+            : null;
+
+    return (
+        <div className="h-36 rounded-[1.2rem] border border-white/10 bg-black/55 p-3">
+            <svg viewBox="0 0 100 52" className="h-full w-full overflow-visible">
+                <path d="M 0,0 L 100,0" stroke="rgba(255,255,255,0.06)" strokeWidth="0.4" />
+                <path d="M 0,26 L 100,26" stroke="rgba(255,255,255,0.06)" strokeWidth="0.4" />
+                <path d="M 0,52 L 100,52" stroke="rgba(255,255,255,0.06)" strokeWidth="0.4" />
+                {goalPath ? (
+                    <path
+                        d={goalPath}
+                        fill="none"
+                        stroke="rgba(245,158,11,0.72)"
+                        strokeDasharray="2.5 2.5"
+                        strokeWidth="0.9"
+                    />
+                ) : null}
+                <path
+                    d={primaryPath}
+                    fill="none"
+                    stroke="rgba(16,185,129,0.98)"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.5"
+                />
+            </svg>
+        </div>
+    );
+}
+
+function ReferencePanel({ step }) {
+    return (
+        <div className="overflow-hidden rounded-[1.35rem] border border-white/10 bg-black/60">
+            <div className="relative">
+                <img
+                    src={step.image}
+                    alt={step.title}
+                    className="h-[320px] w-full object-cover object-center md:h-[420px]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/18 to-transparent" />
+                <div className="absolute left-4 top-4 rounded-full border border-white/12 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-white/78 backdrop-blur-xl">
+                    {step.imageLabel}
+                </div>
+                {step.id === 1 ? (
+                    <div className="absolute bottom-4 right-4 grid w-[140px] grid-cols-2 gap-2 rounded-[1rem] border border-white/10 bg-black/70 p-2 backdrop-blur-xl">
+                        <img src={calibrationPosition1} alt="Position 1 thumbnail" className="h-16 w-full rounded-lg object-cover" />
+                        <img src={calibrationPosition2} alt="Position 2 thumbnail" className="h-16 w-full rounded-lg object-cover" />
+                    </div>
+                ) : null}
+            </div>
+            <div className="border-t border-white/8 p-4">
+                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Reference Notes</div>
+                <p className="mt-3 max-w-2xl font-mono text-sm leading-7 text-white/64">{step.imageCaption}</p>
+            </div>
+        </div>
+    );
+}
+
+function StepPill({ step, active }) {
+    return (
+        <div
+            className={joinClasses(
+                'rounded-full border px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-all',
+                active
+                    ? 'border-emerald-400/36 bg-emerald-500/12 text-emerald-100'
+                    : 'border-white/10 bg-transparent text-white/38',
+            )}
+        >
+            {step.title}
+        </div>
+    );
+}
+
+function TerminalPanel({ lines, terminalRef }) {
+    return (
+        <PanelFrame className="p-4 md:p-5">
+            <div className="flex flex-col gap-3 border-b border-white/8 pb-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/34">System Log</div>
+                    <div className="mt-2 text-xl font-semibold tracking-[-0.04em] text-white">Live Backend Responses</div>
+                </div>
+                <StatusPill tone="neutral">Terminal Online</StatusPill>
+            </div>
+
+            <div className={joinClasses(styles.dataStream, 'mt-4 rounded-[1.2rem] border border-white/10 bg-black/82')}>
+                <div ref={terminalRef} className={joinClasses(styles.logContainer, 'h-56 overflow-y-auto px-4 py-3')}>
+                    {lines.length === 0 ? (
+                        <div className="font-mono text-xs uppercase tracking-[0.18em] text-white/30">No backend responses yet.</div>
+                    ) : (
+                        <div className="space-y-2 font-mono text-[12px] leading-6">
+                            {lines.map((line) => (
+                                <div key={line.id} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
+                                    <span className="text-white/26">{line.time}</span>
+                                    <span className={toneClass(line.tone)}>{line.message}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </PanelFrame>
+    );
 }
 
 export default function Calibration() {
-  // ─── State ───
-  const [calStatus, setCalStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [robotType, setRobotType] = useState('so101_follower');
-  const [terminalLines, setTerminalLines] = useState([]);
-  const pollRef = useRef(null);
-  const terminalRef = useRef(null);
+    const [activeTab, setActiveTab] = useState(getInitialTab);
+    const [serverStatus, setServerStatus] = useState(null);
+    const [scanDevices, setScanDevices] = useState([]);
+    const [statusError, setStatusError] = useState('');
+    const [selectedRobotId, setSelectedRobotId] = useState(0);
+    const [runtimeRefreshing, setRuntimeRefreshing] = useState(false);
 
-  // ─── Terminal çıktısına satır ekle ───
-  const addTerminalLine = useCallback((line) => {
-    setTerminalLines(prev => [...prev, { text: line, ts: new Date().toLocaleTimeString('tr-TR') }]);
-  }, []);
+    const [wizardStep, setWizardStep] = useState(1);
+    const [calibrationState, setCalibrationState] = useState('idle');
+    const [calibrationMessage, setCalibrationMessage] = useState('');
+    const [calibrationError, setCalibrationError] = useState('');
+    const [calibrationLoading, setCalibrationLoading] = useState(false);
+    const [savedConfigPath, setSavedConfigPath] = useState('');
+    const [tutorialOpen, setTutorialOpen] = useState(false);
 
-  // ─── Kalibrasyon durumu sorgulama ───
-  const fetchStatus = useCallback(async () => {
-    try {
-      const status = await lerobotClient.calibrationStatus();
-      setCalStatus(status);
-      setError(null);
-    } catch (err) {
-      if (err?.status === 502 || err?.status === 503) {
-        setCalStatus({ state: 'offline', message: 'Runtime erisilemez' });
-      } else {
-        setError(err?.body?.message || err?.message || 'Durum alinamadi');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    const [plotMode, setPlotMode] = useState('position');
+    const [updateInterval, setUpdateInterval] = useState(0.15);
+    const [jointError, setJointError] = useState('');
+    const [torqueActionState, setTorqueActionState] = useState('idle');
+    const [goalAngles, setGoalAngles] = useState(Array(JOINTS.length).fill(0));
+    const [jointPositions, setJointPositions] = useState(Array(JOINTS.length).fill(0));
+    const [jointTorques, setJointTorques] = useState(Array(JOINTS.length).fill(0));
+    const [positionHistory, setPositionHistory] = useState(createPositionHistory(Array(JOINTS.length).fill(0)));
+    const [torqueHistory, setTorqueHistory] = useState(createTorqueHistory(Array(JOINTS.length).fill(0)));
+    const [systemLog, setSystemLog] = useState([
+        {
+            id: 'boot',
+            time: formatTimestamp(),
+            tone: 'neutral',
+            message: 'Waiting for the calibration backend.',
+        },
+    ]);
+    const [estopHoldProgress, setEstopHoldProgress] = useState(0);
 
-  // ─── Polling ───
-  useEffect(() => {
-    fetchStatus();
-    pollRef.current = setInterval(fetchStatus, 3000);
-    return () => clearInterval(pollRef.current);
-  }, [fetchStatus]);
+    const initializedJointRobotRef = useRef(null);
+    const runtimeSignatureRef = useRef('');
+    const mountedRef = useRef(true);
+    const terminalRef = useRef(null);
+    const estopTimerRef = useRef(null);
 
-  // ─── Terminal auto-scroll ───
-  useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-    }
-  }, [terminalLines]);
+    const appendSystemLog = useCallback((message, tone = 'neutral') => {
+        setSystemLog((previous) => [
+            ...previous.slice(-(TERMINAL_LIMIT - 1)),
+            {
+                id: `${Date.now()}-${Math.random()}`,
+                time: formatTimestamp(),
+                tone,
+                message,
+            },
+        ]);
+    }, []);
 
-  // ─── Aksiyonlar ───
-  const handleStart = async () => {
-    setActionLoading(true);
-    setError(null);
-    try {
-      setTerminalLines([]);
-      addTerminalLine(`$ lerobot-calibrate --robot.type=${robotType} --robot.port=<PORT> --robot.id=kecy_follower`);
-      addTerminalLine('Kalibrasyon oturumu baslatiliyor...');
-      addTerminalLine('Robotu hareket araliginin orta konumuna getir ve Enter\'a bas.');
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            if (estopTimerRef.current) {
+                window.clearInterval(estopTimerRef.current);
+            }
+        };
+    }, []);
 
-      await lerobotClient.calibrationStart({ robot_type: robotType });
-      await fetchStatus();
-
-      addTerminalLine('Kalibrasyon baslatildi. Siradaki adim: zero_position (onayla)');
-      addTerminalLine('Tum eklemleri sirayla tam hareket araliginda gezdir.');
-    } catch (err) {
-      const msg = err?.body?.message || err?.message || 'Kalibrasyon baslatilamadi';
-      setError(msg);
-      addTerminalLine(`HATA: ${msg}`);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleStep = async () => {
-    setActionLoading(true);
-    setError(null);
-    try {
-      const currentStep = calStatus?.current_step;
-      addTerminalLine(`Adim isleniyor: ${currentStep?.id || '?'}...`);
-
-      const result = await lerobotClient.calibrationStep();
-      await fetchStatus();
-
-      const completedId = result.step_completed;
-      addTerminalLine(`Adim tamamlandi: ${completedId}`);
-
-      if (result.step_result?.joint) {
-        const sr = result.step_result;
-        addTerminalLine(`  ${sr.joint}: min=${formatNum(sr.measured_min)} max=${formatNum(sr.measured_max)}${sr.simulated ? ' (simulasyon)' : ''}`);
-      }
-
-      if (result.next_step) {
-        const ns = result.next_step;
-        const actionLabel = ns.action === 'save' ? 'kaydet' : ns.action === 'confirm' ? 'onayla' : 'aralik taramasi';
-        addTerminalLine(`Siradaki adim: ${ns.id} (${actionLabel})`);
-      }
-
-      if (result.state === 'completed') {
-        addTerminalLine('Tum adimlar tamamlandi.');
-        if (result.artifact_path) {
-          addTerminalLine(`Kalibrasyon dosyasi: ${result.artifact_path}`);
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            window.localStorage.setItem(TAB_STORAGE_KEY, activeTab);
         }
-        addTerminalLine('Pozisyonlar kaydedildi.');
-      }
-    } catch (err) {
-      const code = err?.body?.code;
-      const msg = err?.body?.message || err?.message || 'Adim basarisiz';
-      if (code === 'PRECONDITION_FAILED') {
-        setError(`On kosul hatasi: ${msg}`);
-        addTerminalLine(`ON KOSUL HATASI: ${msg}`);
-      } else {
-        setError(msg);
-        addTerminalLine(`HATA: ${msg}`);
-      }
-    } finally {
-      setActionLoading(false);
-    }
-  };
+    }, [activeTab]);
 
-  const handleStop = async () => {
-    setActionLoading(true);
-    setError(null);
-    try {
-      addTerminalLine('Kalibrasyon durduruluyor...');
-      await lerobotClient.calibrationStop();
-      await fetchStatus();
-      addTerminalLine('Kalibrasyon durduruldu.');
-    } catch (err) {
-      setError(err?.body?.message || err?.message || 'Durdurma basarisiz');
-    } finally {
-      setActionLoading(false);
-    }
-  };
+    useEffect(() => {
+        if (!terminalRef.current) return;
+        terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }, [systemLog]);
 
-  const handleReset = async () => {
-    try {
-      await lerobotClient.calibrationStop();
-    } catch { }
-    setTerminalLines([]);
-    await fetchStatus();
-  };
+    const fetchRuntime = useCallback(
+        async (source = 'poll') => {
+            try {
+                const [status, devices] = await Promise.all([
+                    lerobotClient.getServerStatus(),
+                    lerobotClient.scanLocalDevices(),
+                ]);
 
-  const handleCopyTerminal = () => {
-    const text = terminalLines.map(l => `[${l.ts}] ${l.text}`).join('\n');
-    navigator.clipboard.writeText(text).catch(() => { });
-  };
+                if (!mountedRef.current) return;
 
-  // ─── Türetilmis degerler ───
-  const state = calStatus?.state || 'idle';
-  const steps = calStatus?.steps || [];
-  const currentStepIndex = calStatus?.current_step_index ?? 0;
-  const totalSteps = calStatus?.total_steps ?? 0;
-  const isDryRun = calStatus?.dry_run ?? true;
-  const currentStep = calStatus?.current_step;
-  const artifactPath = calStatus?.artifact_path;
-  const isRunning = state === 'running';
-  const isCompleted = state === 'completed';
-  const isStopped = state === 'stopped';
-  const isOffline = state === 'offline';
-  const progressPct = totalSteps > 0 ? Math.round((currentStepIndex / totalSteps) * 100) : 0;
+                const nextDevices = Array.isArray(devices.devices) ? devices.devices : [];
+                const nextRobotStatuses = Array.isArray(status.robot_status) ? status.robot_status : [];
 
-  // ─── MIN / POS / MAX tablosu verileri ───
-  const jointTableData = useMemo(() => {
-    const zeroResult = steps.find(s => s.id === 'zero_position' && s.status === 'completed')?.result;
-    const positions = zeroResult?.positions || {};
+                setServerStatus(status);
+                setScanDevices(nextDevices);
+                setStatusError('');
+                setSelectedRobotId((current) => (nextRobotStatuses.length > 0 ? clamp(current, 0, nextRobotStatuses.length - 1) : 0));
 
-    return JOINT_IDS.map(jid => {
-      const sweepResult = steps.find(s => s.id === `range_${jid}` && s.status === 'completed')?.result;
-      const fallback = DRY_RUN_DEFAULTS[jid];
+                const signature = JSON.stringify({
+                    status: status.status,
+                    robots: nextRobotStatuses.map((robot) => `${robot.name}:${robot.device_name || 'none'}`),
+                    devices: nextDevices.map((device) => device.device),
+                });
 
-      let min = sweepResult?.measured_min;
-      let max = sweepResult?.measured_max;
-      let pos = positions[jid];
+                if (source !== 'poll' || runtimeSignatureRef.current !== signature) {
+                    const robotCount = nextRobotStatuses.length;
+                    const deviceCount = nextDevices.length;
+                    appendSystemLog(
+                        `${source === 'manual' ? 'Status refresh complete' : 'Runtime sync'}: ${robotCount} robot${robotCount === 1 ? '' : 's'} / ${deviceCount} device${deviceCount === 1 ? '' : 's'} detected.`,
+                        status.status === 'ok' ? 'ok' : 'error',
+                    );
+                    runtimeSignatureRef.current = signature;
+                }
+            } catch (error) {
+                if (!mountedRef.current) return;
+                const message = error?.message || 'Unable to reach the calibration backend.';
+                setStatusError(message);
 
-      // If no real data and calibration is completed, use deterministic fallback
-      if (min == null && (isCompleted || (sweepResult != null))) {
-        min = fallback.min;
-      }
-      if (max == null && (isCompleted || (sweepResult != null))) {
-        max = fallback.max;
-      }
-      if (pos == null && (isCompleted || (zeroResult != null))) {
-        pos = fallback.pos;
-      }
-
-      return { id: jid, min, pos, max };
-    });
-  }, [steps, isCompleted]);
-
-  const hasTableData = jointTableData.some(j => j.min != null || j.pos != null || j.max != null);
-  const showTerminal = terminalLines.length > 0 || isRunning || isCompleted;
-
-  if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loadingSpinner}>Kalibrasyon durumu yukleniyor...</div>
-      </div>
+                if (source !== 'poll' || runtimeSignatureRef.current !== 'offline') {
+                    appendSystemLog(message, 'error');
+                    runtimeSignatureRef.current = 'offline';
+                }
+            }
+        },
+        [appendSystemLog],
     );
-  }
 
-  return (
-    <div style={styles.container}>
-      {/* Baslik */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>Kalibrasyon</h1>
-        <p style={styles.subtitle}>
-          SO-ARM101 eklem kalibrasyon sihirbazi. Her eklemi tam hareket araliginda hareket ettirerek min/max pozisyonlarini kaydedin.
-        </p>
-        <a
-          href="https://huggingface.co/docs/lerobot/so101#calibrate"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={styles.docsLink}
-        >
-          LeRobot SO-101 Kalibrasyon Dokumantasyonu
-        </a>
-      </div>
+    useEffect(() => {
+        fetchRuntime('initial');
+        const interval = window.setInterval(() => {
+            fetchRuntime('poll');
+        }, 5000);
 
-      {/* Durum cubugu */}
-      <div style={{ ...styles.statusBar, borderColor: STATE_COLORS[state] || '#555' }}>
-        <div style={styles.statusRow}>
-          <span style={{ ...styles.statusBadge, background: STATE_COLORS[state] }}>
-            {STATE_LABELS[state] || state.toUpperCase()}
-          </span>
-          {isDryRun && state !== 'idle' && state !== 'offline' && (
-            <span style={styles.dryRunBadge}>SIMULASYON</span>
-          )}
-          {isRunning && (
-            <span style={styles.progressText}>
-              Adim {currentStepIndex + 1} / {totalSteps} ({progressPct}%)
-            </span>
-          )}
-        </div>
-        {isRunning && (
-          <div style={styles.progressBarOuter}>
-            <div style={{ ...styles.progressBarInner, width: `${progressPct}%` }} />
-          </div>
-        )}
-      </div>
+        return () => {
+            window.clearInterval(interval);
+        };
+    }, [fetchRuntime]);
 
-      {/* Hata bildirimi */}
-      {error && (
-        <div style={styles.errorBanner}>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} style={styles.dismissBtn}>X</button>
-        </div>
-      )}
+    const robotStatuses = Array.isArray(serverStatus?.robot_status) ? serverStatus.robot_status : [];
+    const robotDevices = useMemo(
+        () => robotStatuses.map((robot, index) => resolveRobotDevice(robot, scanDevices, index)),
+        [robotStatuses, scanDevices],
+    );
 
-      {/* Cevrimdisi bildirimi */}
-      {isOffline && (
-        <div style={styles.offlineBanner}>
-          Runtime cevrimdisi. Kalibrasyona baslamak icin Docker konteynerlerini baslatin.
-        </div>
-      )}
+    const currentRobot = robotStatuses[selectedRobotId] ?? null;
+    const currentDevice = robotDevices[selectedRobotId] ?? null;
+    const backendOnline = Boolean(serverStatus) && !statusError;
+    const mockFallback = currentRobot?.name?.startsWith?.('mock') || currentRobot?.device_name === 'simulation';
+    const progressPct = `${(wizardStep / 3) * 100}%`;
+    const currentStep = STEP_CONTENT[clamp(wizardStep, 1, 3)];
+    const robotInfoLabel = currentRobot ? formatRobotLabel(currentRobot, currentDevice) : 'NO ROBOT · NO PORT';
+    const versionLabel = serverStatus?.version_id ? String(serverStatus.version_id).toUpperCase() : 'LOCAL';
 
-      {/* ─── Bosta / Baslat gorunumu ─── */}
-      {(state === 'idle' || isStopped) && !isOffline && (
-        <div style={styles.startCard}>
-          <h2 style={styles.cardTitle}>Kalibrasyon Oturumu Baslat</h2>
-          <p style={styles.cardDesc}>
-            Bu sihirbaz, SO-ARM101'in her eklemini kalibre etmeniz icin size rehberlik edecektir.
-            Donanim bagli degilken <strong>dry-run (simulasyon)</strong> modunda calisir.
-          </p>
+    const calibrationTone =
+        calibrationState === 'success'
+            ? 'ok'
+            : calibrationState === 'error'
+                ? 'error'
+                : calibrationState === 'in_progress' || calibrationLoading
+                    ? 'warn'
+                    : 'neutral';
 
-          <div style={styles.formRow}>
-            <label style={styles.label}>Robot Tipi</label>
-            <select
-              value={robotType}
-              onChange={(e) => setRobotType(e.target.value)}
-              style={styles.select}
-            >
-              <option value="so101_follower">so101_follower</option>
-              <option value="so_100">so_100</option>
-              <option value="so_follower">so_follower</option>
-              <option value="koch_follower">koch_follower</option>
-            </select>
-          </div>
+    const calibrationStateLabel =
+        calibrationLoading
+            ? 'RUNNING'
+            : calibrationState === 'success'
+                ? 'COMPLETED'
+                : calibrationState === 'error'
+                    ? 'BLOCKED'
+                    : calibrationState === 'in_progress'
+                        ? 'IN PROGRESS'
+                        : 'READY';
 
-          <div style={styles.hwNote}>
-            <strong>Donanim bagli degil mi?</strong> Sorun degil -- kalibrasyon simule edilmis eklem araliklari ile dry-run modunda calisacaktir. Robotunuz geldiginde seri portu baglayip yeniden kalibre edin.
-          </div>
+    const calibrationActionLabel =
+        calibrationLoading
+            ? 'WORKING'
+            : calibrationState === 'in_progress'
+                ? wizardStep < 3
+                    ? 'ADVANCE'
+                    : 'COMPLETE'
+                : 'START';
 
-          <button
-            onClick={handleStart}
-            disabled={actionLoading}
-            style={{
-              ...styles.primaryBtn,
-              opacity: actionLoading ? 0.6 : 1,
-            }}
-          >
-            {actionLoading ? 'Baslatiliyor...' : 'Kalibrasyonu Baslat'}
-          </button>
-        </div>
-      )}
+    const refreshRuntime = async () => {
+        setRuntimeRefreshing(true);
+        await fetchRuntime('manual');
+        if (mountedRef.current) {
+            setRuntimeRefreshing(false);
+        }
+    };
 
-      {/* ─── Devam ediyor / Sihirbaz gorunumu ─── */}
-      {isRunning && currentStep && (
-        <div style={styles.wizardCard}>
-          <div style={styles.currentStepHeader}>
-            <div>
-              <h3 style={styles.stepTitle}>{currentStep.title}</h3>
-              <p style={styles.stepDesc}>{currentStep.description}</p>
-            </div>
-          </div>
+    useEffect(() => {
+        if (activeTab !== 'joints' || !currentRobot) return undefined;
 
-          {currentStep.joint && (
-            <div style={styles.jointInfo}>
-              Eklem: <code style={styles.code}>{currentStep.joint}</code>
-              {isDryRun && (
-                <span style={styles.simNote}> -- simule edilmis aralik taramasi</span>
-              )}
-            </div>
-          )}
+        let cancelled = false;
 
-          <div style={styles.buttonRow}>
-            <button
-              onClick={handleStep}
-              disabled={actionLoading}
-              style={{
-                ...styles.primaryBtn,
-                opacity: actionLoading ? 0.6 : 1,
-              }}
-            >
-              {actionLoading ? 'Isleniyor...' :
-                currentStep.action === 'save' ? 'Kaydet ve Tamamla' :
-                  currentStep.action === 'confirm' ? 'Onayla ve Devam Et' :
-                    'Kayit Al ve Ilerle'
-              }
-            </button>
-            <button
-              onClick={handleStop}
-              disabled={actionLoading}
-              style={styles.dangerBtn}
-            >
-              Durdur
-            </button>
-          </div>
-        </div>
-      )}
+        const initializeJoints = async () => {
+            try {
+                const jointResponse = await lerobotClient.readJoints({
+                    robotId: selectedRobotId,
+                    unit: 'motor_units',
+                    joints_ids: null,
+                    source: 'robot',
+                });
 
-      {/* ─── Tamamlandi gorunumu ─── */}
-      {isCompleted && (
-        <div style={styles.completedCard}>
-          <div style={styles.completedIcon}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-          </div>
-          <h2 style={styles.cardTitle}>Kalibrasyon Tamamlandi</h2>
-          {artifactPath && (
-            <p style={styles.artifactLine}>
-              Kalibrasyon dosyasi: <code style={styles.code}>{artifactPath}</code>
-            </p>
-          )}
-          {isDryRun && (
-            <div style={styles.hwNote}>
-              Bu simule edilmis verilerle yapilmis bir <strong>dry-run (simulasyon)</strong> kalibrasyonudur.
-              Donanim baglandiginda gercek eklem araliklarini kaydetmek icin yeniden calistirin.
-            </div>
-          )}
-          <button onClick={handleReset} style={styles.secondaryBtn}>
-            Yeni Kalibrasyon
-          </button>
-        </div>
-      )}
+                if (cancelled) return;
 
-      {/* ─── Terminal Ciktisi ─── */}
-      {showTerminal && (
-        <div style={styles.terminalCard}>
-          <div style={styles.terminalHeader}>
-            <h3 style={styles.terminalTitle}>Terminal Ciktisi</h3>
-            <button onClick={handleCopyTerminal} style={styles.copyBtn}>
-              Kopyala
-            </button>
-          </div>
-          <div ref={terminalRef} style={styles.terminalBody}>
-            {terminalLines.length === 0 ? (
-              <div style={styles.terminalEmpty}>Kalibrasyon basladiginda cikti burada gorunecektir.</div>
-            ) : (
-              terminalLines.map((line, i) => (
-                <div key={i} style={styles.terminalLine}>
-                  <span style={styles.terminalTs}>[{line.ts}]</span>
-                  <span style={
-                    line.text.startsWith('$') ? styles.terminalCmd :
-                      line.text.startsWith('HATA') || line.text.startsWith('ON KOSUL') ? styles.terminalError :
-                        line.text.startsWith('Adim tamamlandi') ? styles.terminalSuccess :
-                          styles.terminalText
-                  }>
-                    {line.text}
-                  </span>
+                const values = JOINTS.map((_, index) => Number(jointResponse.angles[index] ?? 0));
+                initializedJointRobotRef.current = selectedRobotId;
+                setGoalAngles(values);
+                setJointPositions(values);
+                setPositionHistory(createPositionHistory(values));
+                setTorqueHistory(createTorqueHistory(Array(JOINTS.length).fill(0)));
+                setJointError('');
+            } catch (error) {
+                if (cancelled) return;
+                setJointError(error?.message || 'Unable to initialize joint state.');
+            }
+        };
+
+        if (initializedJointRobotRef.current !== selectedRobotId) {
+            initializeJoints();
+        }
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activeTab, currentRobot, selectedRobotId]);
+
+    useEffect(() => {
+        if (activeTab !== 'joints' || !currentRobot) return undefined;
+
+        let cancelled = false;
+
+        const pollJointState = async () => {
+            try {
+                const [jointResponse, torqueResponse] = await Promise.all([
+                    lerobotClient.readJoints({
+                        robotId: selectedRobotId,
+                        unit: 'motor_units',
+                        joints_ids: null,
+                        source: 'robot',
+                    }),
+                    lerobotClient.readTorque(selectedRobotId),
+                ]);
+
+                if (cancelled) return;
+
+                const nextPositions = JOINTS.map((_, index) => Number(jointResponse.angles[index] ?? 0));
+                const nextTorques = JOINTS.map((_, index) => Number(torqueResponse.current_torque[index] ?? 0));
+
+                setJointPositions(nextPositions);
+                setJointTorques(nextTorques);
+                setPositionHistory((previous) =>
+                    previous.map((series, index) => {
+                        const next = series.slice(1);
+                        next.push({
+                            x: series[series.length - 1].x + 1,
+                            actual: nextPositions[index],
+                            goal: goalAngles[index],
+                        });
+                        return next;
+                    }),
+                );
+                setTorqueHistory((previous) =>
+                    previous.map((series, index) => {
+                        const next = series.slice(1);
+                        next.push({
+                            x: series[series.length - 1].x + 1,
+                            value: nextTorques[index],
+                        });
+                        return next;
+                    }),
+                );
+                setJointError('');
+            } catch (error) {
+                if (cancelled) return;
+                setJointError(error?.message || 'Unable to poll live joint telemetry.');
+            }
+        };
+
+        pollJointState();
+        const interval = window.setInterval(pollJointState, Math.max(updateInterval, 0.05) * 1000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [activeTab, currentRobot, goalAngles, selectedRobotId, updateInterval]);
+
+    const runCalibrationStep = async () => {
+        setCalibrationLoading(true);
+        setCalibrationError('');
+        appendSystemLog(`Calling /calibrate for ${robotInfoLabel}.`, 'warn');
+
+        try {
+            const response = await lerobotClient.calibrate(selectedRobotId);
+            setCalibrationState(response.calibration_status);
+            setCalibrationMessage(response.message);
+
+            const match = response.message.match(/[A-Z]:\\\\[^\n]+\.json|[A-Z]:\\[^\n]+\.json/);
+            if (match) {
+                setSavedConfigPath(match[0]);
+            }
+
+            if (response.calibration_status === 'success') {
+                setWizardStep(3);
+            } else {
+                setWizardStep(clamp(response.current_step + 1, 1, 3));
+            }
+
+            if (response.calibration_status === 'error') {
+                setCalibrationError(response.message);
+            }
+
+            appendSystemLog(
+                response.message || `Calibration state: ${response.calibration_status}.`,
+                response.calibration_status === 'success'
+                    ? 'ok'
+                    : response.calibration_status === 'error'
+                        ? 'error'
+                        : 'warn',
+            );
+        } catch (error) {
+            const message = error?.body?.detail || error?.message || 'Calibration request failed.';
+            setCalibrationState('error');
+            setCalibrationError(message);
+            appendSystemLog(message, 'error');
+        } finally {
+            setCalibrationLoading(false);
+        }
+    };
+
+    const resetCalibration = () => {
+        setWizardStep(1);
+        setCalibrationState('idle');
+        setCalibrationMessage('');
+        setCalibrationError('');
+        setSavedConfigPath('');
+        appendSystemLog('Calibration wizard reset locally.', 'neutral');
+    };
+
+    const handleTorqueToggle = async (torqueStatus) => {
+        setTorqueActionState(torqueStatus ? 'enabling' : 'disabling');
+        try {
+            await lerobotClient.toggleTorque({ robotId: selectedRobotId, torque_status: torqueStatus });
+            setJointError('');
+            appendSystemLog(`Torque ${torqueStatus ? 'enabled' : 'disabled'} for ${robotInfoLabel}.`, torqueStatus ? 'ok' : 'warn');
+        } catch (error) {
+            const message = error?.body?.detail || error?.message || 'Torque update failed.';
+            setJointError(message);
+            appendSystemLog(message, 'error');
+        } finally {
+            setTorqueActionState('idle');
+        }
+    };
+
+    const handleJointWrite = async (jointIndex, value) => {
+        const nextGoals = goalAngles.map((angle, index) => (index === jointIndex ? value : angle));
+        setGoalAngles(nextGoals);
+        setPositionHistory((previous) =>
+            previous.map((series, index) =>
+                index === jointIndex ? series.map((point) => ({ ...point, goal: value })) : series,
+            ),
+        );
+
+        try {
+            await lerobotClient.writeJoints({
+                robotId: selectedRobotId,
+                angles: nextGoals,
+                unit: 'motor_units',
+                joints_ids: null,
+            });
+            setJointError('');
+        } catch (error) {
+            const message = error?.body?.detail || error?.message || 'Joint write failed.';
+            setJointError(message);
+            appendSystemLog(message, 'error');
+        }
+    };
+
+    const handleRobotSelect = (event) => {
+        const nextId = Number(event.target.value);
+        setSelectedRobotId(nextId);
+        const nextRobot = robotStatuses[nextId] ?? null;
+        const nextDevice = robotDevices[nextId] ?? null;
+        if (nextRobot) {
+            appendSystemLog(`Target robot set to ${formatRobotLabel(nextRobot, nextDevice)}.`, 'neutral');
+        }
+    };
+
+    const stopEstopHold = useCallback(() => {
+        if (estopTimerRef.current) {
+            window.clearInterval(estopTimerRef.current);
+            estopTimerRef.current = null;
+        }
+        setEstopHoldProgress(0);
+    }, []);
+
+    const startEstopHold = useCallback(() => {
+        if (estopTimerRef.current) return;
+
+        const startedAt = performance.now();
+        estopTimerRef.current = window.setInterval(() => {
+            const nextProgress = clamp(((performance.now() - startedAt) / ESTOP_HOLD_MS) * 100, 0, 100);
+            setEstopHoldProgress(nextProgress);
+
+            if (nextProgress >= 100) {
+                window.clearInterval(estopTimerRef.current);
+                estopTimerRef.current = null;
+                appendSystemLog('E-STOP requested, but the current backend does not expose a hardware stop endpoint.', 'error');
+                window.setTimeout(() => {
+                    if (mountedRef.current) {
+                        setEstopHoldProgress(0);
+                    }
+                }, 350);
+            }
+        }, 16);
+    }, [appendSystemLog]);
+
+    const renderCalibrationTab = () => (
+        <div className="grid gap-4">
+            <PanelFrame className="p-5 md:p-6">
+                <div className="flex flex-col gap-5">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                        <div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/36">Calibration Wizard</div>
+                            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-white md:text-5xl">{currentStep.title}</h2>
+                            <p
+                                className="mt-3 max-w-3xl font-mono text-sm leading-7 text-white/62 md:text-[15px]"
+                                style={{
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: 'vertical',
+                                    overflow: 'hidden',
+                                }}
+                            >
+                                {currentStep.description}
+                            </p>
+                        </div>
+
+                        <div className="text-left md:text-right">
+                            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/36">
+                                STEP {wizardStep} / 3
+                            </div>
+                            <div className="mt-3">
+                                <StatusPill tone={calibrationTone}>{calibrationStateLabel}</StatusPill>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="h-[3px] overflow-hidden rounded-full bg-white/8">
+                        <div className="h-full rounded-full bg-emerald-400 transition-all duration-300" style={{ width: progressPct }} />
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+                        <ReferencePanel step={currentStep} />
+
+                        <div className="grid gap-4">
+                            <PanelFrame className="p-4 md:p-5">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/36">Current State</div>
+                                        <div className="mt-3">
+                                            <StatusPill tone={calibrationTone}>{calibrationStateLabel}</StatusPill>
+                                        </div>
+                                    </div>
+                                    {calibrationLoading ? <Loader2 className="h-5 w-5 animate-spin text-amber-200" /> : null}
+                                </div>
+
+                                <div className="mt-4 grid gap-3">
+                                    <button
+                                        onClick={runCalibrationStep}
+                                        disabled={calibrationLoading || !backendOnline || !currentRobot}
+                                        className={joinClasses(
+                                            styles.actionBtn,
+                                            'inline-flex items-center justify-center gap-2 rounded-[1.05rem] border border-emerald-400/30 bg-emerald-500/12 px-4 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-50 transition-all hover:bg-emerald-500/18 disabled:cursor-not-allowed disabled:opacity-40',
+                                        )}
+                                    >
+                                        <ArrowRight className="h-4 w-4" />
+                                        {calibrationActionLabel}
+                                    </button>
+
+                                    <button
+                                        onClick={resetCalibration}
+                                        className={joinClasses(
+                                            styles.actionBtn,
+                                            'inline-flex items-center justify-center gap-2 rounded-[1.05rem] border border-white/10 bg-white/5 px-4 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/72 transition-all hover:border-white/20 hover:text-white',
+                                        )}
+                                    >
+                                        <RotateCcw className="h-4 w-4" />
+                                        RESET
+                                    </button>
+
+                                    <button
+                                        onClick={() => setTutorialOpen((open) => !open)}
+                                        className={joinClasses(
+                                            styles.actionBtn,
+                                            'inline-flex items-center justify-center gap-2 rounded-[1.05rem] border border-white/10 bg-black/45 px-4 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/72 transition-all hover:border-white/20 hover:text-white',
+                                        )}
+                                    >
+                                        <Play className="h-4 w-4" />
+                                        TUTORIAL
+                                    </button>
+                                </div>
+                            </PanelFrame>
+
+                            {tutorialOpen ? (
+                                <PanelFrame className="p-4 md:p-5">
+                                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/36">Step Tutorial</div>
+                                    <div className="mt-4 space-y-3">
+                                        {currentStep.physical.map((item) => (
+                                            <div key={item} className="flex items-start gap-3">
+                                                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-emerald-300/90" />
+                                                <span className="font-mono text-sm leading-7 text-white/72">{item}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </PanelFrame>
+                            ) : null}
+
+                            {savedConfigPath ? (
+                                <PanelFrame className="p-4 md:p-5">
+                                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-emerald-200">Saved Config</div>
+                                    <div className="mt-3 break-all font-mono text-xs leading-6 text-emerald-100/82">
+                                        {savedConfigPath}
+                                    </div>
+                                </PanelFrame>
+                            ) : null}
+
+                            {calibrationMessage ? (
+                                <PanelFrame className="p-4 md:p-5">
+                                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/36">Latest Response</div>
+                                    <div className={joinClasses('mt-3 font-mono text-sm leading-7', toneClass(calibrationTone))}>
+                                        {calibrationMessage}
+                                    </div>
+                                    {calibrationError ? (
+                                        <div className="mt-3 rounded-[1rem] border border-red-500/25 bg-red-500/10 px-3 py-2 font-mono text-xs leading-6 text-red-100/82">
+                                            {calibrationError}
+                                        </div>
+                                    ) : null}
+                                </PanelFrame>
+                            ) : null}
+                        </div>
+                    </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+            </PanelFrame>
 
-      {/* ─── Kalibrasyon Degerleri Tablosu ─── */}
-      {hasTableData && (
-        <div style={styles.tableCard}>
-          <h3 style={styles.tableTitle}>Kalibrasyon Degerleri</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>AD</th>
-                  <th style={{ ...styles.th, textAlign: 'right' }}>MIN</th>
-                  <th style={{ ...styles.th, textAlign: 'right' }}>ORTA (POS)</th>
-                  <th style={{ ...styles.th, textAlign: 'right' }}>MAX</th>
-                </tr>
-              </thead>
-              <tbody>
-                {jointTableData.map(j => (
-                  <tr key={j.id} style={styles.tr}>
-                    <td style={styles.tdName}>{j.id}</td>
-                    <td style={styles.tdNum}>{formatNum(j.min)}</td>
-                    <td style={styles.tdNum}>{formatNum(j.pos)}</td>
-                    <td style={styles.tdNum}>{formatNum(j.max)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {isDryRun && (
-            <div style={styles.tableNote}>
-              Simulasyon verileri gosteriliyor. Donanim baglandiginda gercek degerler kullanilir.
+            <PanelFrame className="p-4">
+                <div className="flex flex-wrap gap-3">
+                    {[STEP_CONTENT[1], STEP_CONTENT[2], STEP_CONTENT[3]].map((step) => (
+                        <StepPill key={step.id} step={step} active={step.id === wizardStep} />
+                    ))}
+                </div>
+            </PanelFrame>
+
+            <TerminalPanel lines={systemLog} terminalRef={terminalRef} />
+        </div>
+    );
+
+    const renderJointsTab = () => (
+        <div className="grid gap-4">
+            <PanelFrame className="p-5 md:p-6">
+                <div className="flex flex-col gap-5">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/36">Joints Control</div>
+                            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-white md:text-4xl">
+                                Direct Motor Targets and Live Telemetry
+                            </h2>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <StatusPill tone={backendOnline ? 'ok' : 'error'}>
+                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                                {backendOnline ? 'Backend Online' : 'Backend Offline'}
+                            </StatusPill>
+                            <StatusPill tone="neutral">{plotMode === 'position' ? 'Position Plot' : 'Torque Plot'}</StatusPill>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-4">
+                        <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4">
+                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Device</div>
+                            <div className="mt-3 flex items-center gap-3 text-white">
+                                <Usb className="h-4 w-4 text-emerald-300" />
+                                <div>
+                                    <div className="font-mono text-sm font-bold uppercase tracking-[0.14em]">
+                                        {currentDevice?.device ?? 'UNAVAILABLE'}
+                                    </div>
+                                    <div className="mt-1 font-mono text-xs text-white/42">
+                                        {currentDevice?.serial_number ?? currentRobot?.device_name ?? 'NO SERIAL'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4">
+                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Torque</div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => handleTorqueToggle(true)}
+                                    disabled={!currentRobot || torqueActionState !== 'idle'}
+                                    className={joinClasses(
+                                        styles.actionBtn,
+                                        'rounded-xl border border-emerald-400/26 bg-emerald-500/12 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-100 transition-all hover:bg-emerald-500/18 disabled:opacity-40',
+                                    )}
+                                >
+                                    ENABLE
+                                </button>
+                                <button
+                                    onClick={() => handleTorqueToggle(false)}
+                                    disabled={!currentRobot || torqueActionState !== 'idle'}
+                                    className={joinClasses(
+                                        styles.actionBtn,
+                                        'rounded-xl border border-amber-400/26 bg-amber-500/10 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-amber-100 transition-all hover:bg-amber-500/16 disabled:opacity-40',
+                                    )}
+                                >
+                                    DISABLE
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4">
+                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Plot Mode</div>
+                            <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-black/45 p-1">
+                                {['position', 'torque'].map((mode) => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => setPlotMode(mode)}
+                                        className={joinClasses(
+                                            styles.actionBtn,
+                                            'rounded-lg px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-all',
+                                            plotMode === mode
+                                                ? 'border border-white/14 bg-white/10 text-white'
+                                                : 'border border-transparent text-white/42 hover:bg-white/5 hover:text-white/72',
+                                        )}
+                                    >
+                                        {mode}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4">
+                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Poll Interval</div>
+                            <input
+                                type="number"
+                                min={0.05}
+                                max={1}
+                                step={0.05}
+                                value={updateInterval}
+                                onChange={(event) => setUpdateInterval(Number(event.target.value))}
+                                className="mt-3 w-full rounded-xl border border-white/10 bg-black/55 px-3 py-3 font-mono text-sm text-white outline-none transition-all focus:border-white/22"
+                            />
+                        </div>
+                    </div>
+
+                    {jointError ? (
+                        <div className="rounded-[1.15rem] border border-red-500/24 bg-red-500/10 px-4 py-3 font-mono text-sm leading-7 text-red-100/84">
+                            {jointError}
+                        </div>
+                    ) : null}
+                </div>
+            </PanelFrame>
+
+            <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+                <PanelFrame className="p-5 md:p-6">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/34">Motor Targets</div>
+                    <div className="mt-5 space-y-4">
+                        {JOINTS.map((joint, index) => (
+                            <div key={joint.id} className="rounded-[1.2rem] border border-white/10 bg-white/5 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/66">
+                                        {joint.label}
+                                    </div>
+                                    <div className="font-mono text-sm text-emerald-200">
+                                        {Math.round(goalAngles[index])}
+                                    </div>
+                                </div>
+                                <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/34">
+                                    Actual {Math.round(jointPositions[index])}
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={POSITION_LIMIT}
+                                    step={1}
+                                    value={goalAngles[index]}
+                                    onChange={(event) => handleJointWrite(index, Number(event.target.value))}
+                                    className="mt-4 w-full accent-emerald-400"
+                                    disabled={!currentRobot}
+                                />
+                                <div className="mt-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-white/32">
+                                    <span>0</span>
+                                    <span>2048</span>
+                                    <span>4095</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </PanelFrame>
+
+                <PanelFrame className="p-5 md:p-6">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/34">Live Telemetry</div>
+                    <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {JOINTS.map((joint, index) => (
+                            <div key={joint.id} className="rounded-[1.2rem] border border-white/10 bg-white/5 p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/66">
+                                            {joint.label}
+                                        </div>
+                                        <div className="mt-2 font-mono text-xs leading-6 text-white/42">
+                                            {plotMode === 'position'
+                                                ? `ACT ${Math.round(jointPositions[index])} / GOAL ${Math.round(goalAngles[index])}`
+                                                : `TORQUE ${jointTorques[index].toFixed(1)}`}
+                                        </div>
+                                    </div>
+                                    <Activity className="h-4 w-4 text-white/30" />
+                                </div>
+                                <div className="mt-4">
+                                    <MiniChart
+                                        data={plotMode === 'position' ? positionHistory[index] : torqueHistory[index]}
+                                        mode={plotMode}
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </PanelFrame>
             </div>
-          )}
-        </div>
-      )}
 
-      {/* ─── Adimlar ozeti ─── */}
-      {steps.length > 0 && (
-        <div style={styles.stepsCard}>
-          <h3 style={styles.stepsTitle}>Adimlar Ozeti</h3>
-          <div style={styles.stepsList}>
-            {steps.map((step, i) => (
-              <div
-                key={step.id}
-                style={{
-                  ...styles.stepRow,
-                  ...(step.status === 'current' ? styles.stepCurrent : {}),
-                  ...(step.status === 'completed' ? styles.stepCompleted : {}),
-                }}
-              >
-                <span style={styles.stepNumber}>
-                  {step.status === 'completed' ? '/' : step.status === 'current' ? '>' : (i + 1)}
-                </span>
-                <span style={styles.stepLabel}>{step.title}</span>
-                <span style={{
-                  ...styles.stepStatus,
-                  color: step.status === 'completed' ? '#2ecc71' :
-                    step.status === 'current' ? '#4ecdc4' : '#666',
-                }}>
-                  {STEP_STATUS_LABELS[step.status] || step.status}
-                </span>
-              </div>
-            ))}
-          </div>
+            <TerminalPanel lines={systemLog} terminalRef={terminalRef} />
         </div>
-      )}
+    );
 
-      {/* Kaynak */}
-      <div style={styles.sourceBox}>
-        <span style={styles.sourceLabel}>Kaynak</span>
-        <a
-          href="https://huggingface.co/docs/lerobot/so101#calibrate"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={styles.sourceLink}
+    return (
+        <div
+            className="relative min-h-full overflow-hidden bg-black text-white"
+            style={{ fontFamily: "'JetBrains Mono', 'SF Mono', 'Consolas', monospace" }}
         >
-          HuggingFace LeRobot -- SO-101 Kalibrasyon
-        </a>
-      </div>
-    </div>
-  );
+            <div className={joinClasses(styles.gridPattern, 'pointer-events-none absolute inset-0 opacity-35')} />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_24%),linear-gradient(180deg,#050505_0%,#000000_100%)]" />
+            <div className={joinClasses(styles.ambientOrb, 'pointer-events-none -left-16 top-10 h-56 w-56 bg-emerald-500/10')} />
+            <div className={joinClasses(styles.ambientOrb, 'pointer-events-none right-0 top-0 h-72 w-72 bg-red-500/6')} style={{ animationDelay: '2s' }} />
+
+            <div className="relative z-10 mx-auto flex max-w-[1600px] flex-col gap-4 px-3 py-3 md:px-4 md:py-4">
+                <PanelFrame className="p-4 md:p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">Kecy Platform</div>
+                            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-white md:text-4xl">Robot Calibration</h1>
+                            <p className="mt-3 max-w-3xl font-mono text-sm leading-7 text-white/58">
+                                Guided calibration on the left rail, hardware execution on the right, and direct joint access without leaving this page.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 lg:justify-end">
+                            <StatusPill tone={backendOnline ? 'ok' : 'error'}>
+                                <Server className="h-3.5 w-3.5" />
+                                {backendOnline ? 'Backend Online' : 'Backend Offline'}
+                            </StatusPill>
+                            <StatusPill tone="neutral">
+                                <Usb className="h-3.5 w-3.5" />
+                                {robotInfoLabel}
+                            </StatusPill>
+                        </div>
+                    </div>
+                </PanelFrame>
+
+                <PanelFrame className="p-2">
+                    <div className="grid gap-2 md:grid-cols-2">
+                        {[
+                            { id: 'calibration', label: 'Calibration' },
+                            { id: 'joints', label: 'Joints Control' },
+                        ].map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={joinClasses(
+                                    styles.actionBtn,
+                                    'rounded-[1.15rem] border px-4 py-4 text-left font-mono text-[11px] font-bold uppercase tracking-[0.22em] transition-all',
+                                    activeTab === tab.id
+                                        ? 'border-white/16 bg-white/10 text-white'
+                                        : 'border-transparent bg-transparent text-white/44 hover:bg-white/5 hover:text-white/72',
+                                )}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                </PanelFrame>
+
+                <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+                    <div className="grid gap-4 xl:content-start">
+                        <PanelFrame className="p-4">
+                            <div className="font-mono text-[10px] uppercase tracking-[0.32em] text-white/34">Robot Target</div>
+                            <div className="relative mt-4">
+                                <select
+                                    value={selectedRobotId}
+                                    onChange={handleRobotSelect}
+                                    disabled={robotStatuses.length === 0}
+                                    className="w-full appearance-none rounded-[1.1rem] border border-white/12 bg-black/70 px-4 py-4 pr-10 font-mono text-xs font-bold uppercase tracking-[0.18em] text-white outline-none transition-all focus:border-white/24 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {robotStatuses.length === 0 ? (
+                                        <option value={0}>NO ROBOT DETECTED</option>
+                                    ) : (
+                                        robotStatuses.map((robot, index) => (
+                                            <option key={`${robot.name}-${robot.device_name ?? index}`} value={index}>
+                                                {formatRobotLabel(robot, robotDevices[index])}
+                                            </option>
+                                        ))
+                                    )}
+                                </select>
+                                <ArrowRight className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-white/28" />
+                            </div>
+
+                            <button
+                                onClick={refreshRuntime}
+                                disabled={runtimeRefreshing}
+                                className={joinClasses(
+                                    styles.actionBtn,
+                                    'mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[1.05rem] border border-white/10 bg-white/5 px-4 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/72 transition-all hover:border-white/20 hover:text-white disabled:cursor-wait disabled:opacity-50',
+                                )}
+                            >
+                                <RefreshCw className={joinClasses('h-4 w-4', runtimeRefreshing ? 'animate-spin' : '')} />
+                                REFRESH STATUS
+                            </button>
+                        </PanelFrame>
+
+                        <PanelFrame className="p-4">
+                            <div className="rounded-[1.25rem] border border-amber-500/22 bg-amber-500/10 p-4">
+                                <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-200">Detected Robot</div>
+                                <div className="mt-4 space-y-1">
+                                    <InfoRow label="Name" value={formatRobotName(currentRobot?.name)} tone="text-amber-100/84" />
+                                    <InfoRow label="Port" value={currentDevice?.device ?? currentRobot?.device_name ?? 'UNAVAILABLE'} tone="text-amber-100/84" />
+                                    <InfoRow label="Serial" value={currentDevice?.serial_number ?? currentRobot?.device_name ?? 'UNAVAILABLE'} tone="text-amber-100/84" />
+                                </div>
+                                {mockFallback ? (
+                                    <div className="mt-4 rounded-xl border border-amber-500/24 bg-black/35 px-3 py-2 font-mono text-[11px] leading-6 text-amber-100/78">
+                                        Mock fallback detected. Connect a real robot before saving production calibration data.
+                                    </div>
+                                ) : null}
+                            </div>
+                        </PanelFrame>
+
+                        <PanelFrame className="p-4">
+                            <div className="rounded-[1.25rem] border border-red-500/22 bg-red-500/10 p-4">
+                                <div className="flex items-start gap-3">
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 text-red-200" />
+                                    <div>
+                                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-red-100">Safety Warning</div>
+                                        <p className="mt-3 font-mono text-xs leading-6 text-red-100/78">
+                                            Calibration releases torque. Support the arm, keep the work envelope clear, and avoid advancing any step while cables are under strain.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </PanelFrame>
+                    </div>
+
+                    <div className="min-w-0">{activeTab === 'calibration' ? renderCalibrationTab() : renderJointsTab()}</div>
+                </div>
+
+                <PanelFrame className="p-3 md:px-4 md:py-3">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <button
+                            onMouseDown={startEstopHold}
+                            onMouseUp={stopEstopHold}
+                            onMouseLeave={stopEstopHold}
+                            onTouchStart={startEstopHold}
+                            onTouchEnd={stopEstopHold}
+                            onTouchCancel={stopEstopHold}
+                            className={joinClasses(
+                                styles.estopBtn,
+                                styles.actionBtn,
+                                'relative overflow-hidden rounded-[1.05rem] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.22em]',
+                            )}
+                        >
+                            <span
+                                className="absolute inset-y-0 left-0 bg-red-500/20 transition-[width] duration-75"
+                                style={{ width: `${estopHoldProgress}%` }}
+                            />
+                            <span className="relative inline-flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4" />
+                                E-STOP HOLD TO TRIGGER
+                            </span>
+                        </button>
+
+                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/34">
+                            KECYAI BUILD {versionLabel}
+                        </div>
+                    </div>
+                </PanelFrame>
+            </div>
+        </div>
+    );
 }
-
-// ─── Stiller ───
-
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 20,
-    maxWidth: 800,
-  },
-  header: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  title: {
-    fontFamily: "'pptelegraf-regular', sans-serif",
-    fontSize: 'clamp(24px, 4vw, 42px)',
-    color: '#ffffff',
-    letterSpacing: '-0.02em',
-    lineHeight: 1.15,
-    margin: 0,
-  },
-  subtitle: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 14,
-    color: '#aaa',
-    lineHeight: '1.6em',
-    margin: 0,
-    maxWidth: 680,
-  },
-  docsLink: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 12,
-    color: '#cecafb',
-    textDecoration: 'none',
-  },
-  loadingSpinner: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 14,
-    color: '#888',
-    padding: 40,
-    textAlign: 'center',
-  },
-
-  // Durum cubugu
-  statusBar: {
-    padding: '14px 18px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(240,243,243,0.12)',
-    borderRadius: 10,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
-  statusRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-  },
-  statusBadge: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 11,
-    color: '#000',
-    padding: '3px 10px',
-    borderRadius: 4,
-    fontWeight: 600,
-    letterSpacing: '0.05em',
-  },
-  dryRunBadge: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 10,
-    color: '#f39c12',
-    border: '1px solid rgba(243,156,18,0.3)',
-    padding: '2px 8px',
-    borderRadius: 4,
-  },
-  progressText: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 12,
-    color: '#999',
-    marginLeft: 'auto',
-  },
-  progressBarOuter: {
-    height: 4,
-    background: 'rgba(255,255,255,0.08)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressBarInner: {
-    height: '100%',
-    background: 'linear-gradient(90deg, #4ecdc4, #2ecc71)',
-    borderRadius: 2,
-    transition: 'width 0.3s ease',
-  },
-
-  // Hata / cevrimdisi bildirimleri
-  errorBanner: {
-    padding: '12px 16px',
-    background: 'rgba(231,76,60,0.12)',
-    border: '1px solid rgba(231,76,60,0.3)',
-    borderRadius: 8,
-    color: '#e74c3c',
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dismissBtn: {
-    background: 'none',
-    border: 'none',
-    color: '#e74c3c',
-    cursor: 'pointer',
-    fontSize: 16,
-    padding: '0 4px',
-  },
-  offlineBanner: {
-    padding: '14px 18px',
-    background: 'rgba(231,76,60,0.08)',
-    border: '1px solid rgba(231,76,60,0.25)',
-    borderRadius: 8,
-    color: '#e74c3c',
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-  },
-
-  // Baslat karti
-  startCard: {
-    padding: '24px 22px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(240,243,243,0.1)',
-    borderRadius: 12,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  cardTitle: {
-    fontFamily: "'pptelegraf-regular', sans-serif",
-    fontSize: 20,
-    color: '#fff',
-    margin: 0,
-  },
-  cardDesc: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    color: '#aaa',
-    lineHeight: '1.7em',
-    margin: 0,
-  },
-  formRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-  },
-  label: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 12,
-    color: '#999',
-    minWidth: 90,
-  },
-  select: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.15)',
-    borderRadius: 6,
-    color: '#fff',
-    padding: '6px 10px',
-    outline: 'none',
-  },
-  hwNote: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 12,
-    color: '#888',
-    background: 'rgba(78,205,196,0.06)',
-    border: '1px solid rgba(78,205,196,0.15)',
-    borderRadius: 8,
-    padding: '10px 14px',
-    lineHeight: '1.6em',
-  },
-  primaryBtn: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 14,
-    background: 'linear-gradient(135deg, #4ecdc4, #44b09e)',
-    border: 'none',
-    borderRadius: 8,
-    color: '#000',
-    padding: '10px 20px',
-    cursor: 'pointer',
-    fontWeight: 600,
-    transition: 'opacity 0.2s',
-    alignSelf: 'flex-start',
-  },
-  secondaryBtn: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.15)',
-    borderRadius: 8,
-    color: '#ccc',
-    padding: '8px 16px',
-    cursor: 'pointer',
-    alignSelf: 'flex-start',
-  },
-  dangerBtn: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    background: 'rgba(231,76,60,0.15)',
-    border: '1px solid rgba(231,76,60,0.3)',
-    borderRadius: 8,
-    color: '#e74c3c',
-    padding: '8px 16px',
-    cursor: 'pointer',
-  },
-
-  // Sihirbaz karti
-  wizardCard: {
-    padding: '24px 22px',
-    background: 'rgba(78,205,196,0.04)',
-    border: '1px solid rgba(78,205,196,0.2)',
-    borderRadius: 12,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  currentStepHeader: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 14,
-  },
-  stepTitle: {
-    fontFamily: "'pptelegraf-regular', sans-serif",
-    fontSize: 18,
-    color: '#fff',
-    margin: 0,
-  },
-  stepDesc: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    color: '#aaa',
-    margin: '4px 0 0 0',
-    lineHeight: '1.6em',
-  },
-  jointInfo: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    color: '#999',
-  },
-  code: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    background: 'rgba(255,255,255,0.06)',
-    padding: '2px 6px',
-    borderRadius: 4,
-    color: '#4ecdc4',
-    fontSize: 12,
-  },
-  simNote: {
-    color: '#f39c12',
-    fontSize: 11,
-  },
-  buttonRow: {
-    display: 'flex',
-    gap: 12,
-    alignItems: 'center',
-  },
-
-  // Tamamlandi karti
-  completedCard: {
-    padding: '30px 24px',
-    background: 'rgba(46,204,113,0.06)',
-    border: '1px solid rgba(46,204,113,0.25)',
-    borderRadius: 12,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-    alignItems: 'center',
-    textAlign: 'center',
-  },
-  completedIcon: {
-    fontSize: 48,
-  },
-  artifactLine: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 12,
-    color: '#aaa',
-    wordBreak: 'break-all',
-  },
-
-  // Terminal panel
-  terminalCard: {
-    background: '#0a0a0a',
-    border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  terminalHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '10px 16px',
-    background: 'rgba(255,255,255,0.04)',
-    borderBottom: '1px solid rgba(255,255,255,0.08)',
-  },
-  terminalTitle: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    color: '#aaa',
-    margin: 0,
-    fontWeight: 600,
-  },
-  copyBtn: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 11,
-    color: '#888',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 4,
-    padding: '3px 10px',
-    cursor: 'pointer',
-    transition: 'color 0.2s',
-  },
-  terminalBody: {
-    padding: '12px 16px',
-    maxHeight: 260,
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 3,
-  },
-  terminalEmpty: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 12,
-    color: '#555',
-    fontStyle: 'italic',
-  },
-  terminalLine: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 12,
-    lineHeight: '1.6em',
-    display: 'flex',
-    gap: 8,
-    alignItems: 'baseline',
-  },
-  terminalTs: {
-    color: '#555',
-    fontSize: 10,
-    flexShrink: 0,
-    minWidth: 70,
-  },
-  terminalCmd: {
-    color: '#4ecdc4',
-  },
-  terminalError: {
-    color: '#e74c3c',
-  },
-  terminalSuccess: {
-    color: '#2ecc71',
-  },
-  terminalText: {
-    color: '#ccc',
-  },
-
-  // Kalibrasyon degerleri tablosu
-  tableCard: {
-    background: 'rgba(255,255,255,0.02)',
-    border: '1px solid rgba(240,243,243,0.1)',
-    borderRadius: 10,
-    padding: '18px 20px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  tableTitle: {
-    fontFamily: "'pptelegraf-regular', sans-serif",
-    fontSize: 15,
-    color: '#ccc',
-    margin: 0,
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-  },
-  th: {
-    padding: '8px 12px',
-    textAlign: 'left',
-    color: '#888',
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    borderBottom: '1px solid rgba(255,255,255,0.1)',
-  },
-  tr: {
-    borderBottom: '1px solid rgba(255,255,255,0.04)',
-  },
-  tdName: {
-    padding: '8px 12px',
-    color: '#ddd',
-    fontWeight: 500,
-  },
-  tdNum: {
-    padding: '8px 12px',
-    textAlign: 'right',
-    color: '#4ecdc4',
-    fontVariantNumeric: 'tabular-nums',
-  },
-  tableNote: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 11,
-    color: '#666',
-    fontStyle: 'italic',
-  },
-
-  // Adimlar ozeti
-  stepsCard: {
-    padding: '18px 20px',
-    background: 'rgba(255,255,255,0.02)',
-    border: '1px solid rgba(240,243,243,0.08)',
-    borderRadius: 10,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  stepsTitle: {
-    fontFamily: "'pptelegraf-regular', sans-serif",
-    fontSize: 15,
-    color: '#ccc',
-    margin: 0,
-  },
-  stepsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-  },
-  stepRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '6px 10px',
-    borderRadius: 6,
-    transition: 'background 0.2s',
-  },
-  stepCurrent: {
-    background: 'rgba(78,205,196,0.08)',
-    border: '1px solid rgba(78,205,196,0.2)',
-  },
-  stepCompleted: {
-    opacity: 0.7,
-  },
-  stepNumber: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 12,
-    color: '#666',
-    width: 20,
-    textAlign: 'center',
-    flexShrink: 0,
-  },
-  stepLabel: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    color: '#ddd',
-    flex: 1,
-  },
-  stepStatus: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  },
-
-  // Kaynak
-  sourceBox: {
-    marginTop: 12,
-    padding: '14px 18px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(240,243,243,0.08)',
-    borderRadius: 10,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-  },
-  sourceLabel: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 10,
-    color: '#666',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-  },
-  sourceLink: {
-    fontFamily: "'berkeleymonotrial-regular', monospace",
-    fontSize: 13,
-    color: '#cecafb',
-    textDecoration: 'none',
-    wordBreak: 'break-all',
-  },
-};

@@ -29,10 +29,11 @@ class RecordingManager:
 
     def __init__(self):
         DATASETS_DIR.mkdir(parents=True, exist_ok=True)
-        self._state = "idle"  # idle | recording
+        self._state = "idle"  # idle | recording | replaying
         self._session: Optional[Dict[str, Any]] = None
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._should_save = True
         self._lock = threading.Lock()
         self._frame_count = 0
         self._episode_count = 0
@@ -44,16 +45,16 @@ class RecordingManager:
     def get_status(self) -> Dict[str, Any]:
         with self._lock:
             if self._state == "idle":
-                return {"state": "idle"}
+                return {"state": "idle", "episode_count": self._episode_count}
             return {
                 "state": self._state,
-                "session_id": self._session.get("id", ""),
-                "dataset_id": self._session.get("dataset_id", ""),
-                "robot_type": self._session.get("robot_type", ""),
-                "mode": self._session.get("mode", "dry_run"),
+                "session_id": self._session.get("id", "") if self._session else "",
+                "dataset_id": self._session.get("dataset_id", "") if self._session else "",
+                "robot_type": self._session.get("robot_type", "") if self._session else "",
+                "mode": self._session.get("mode", "dry_run") if self._session else "dry_run",
                 "episode_count": self._episode_count,
                 "frame_count": self._frame_count,
-                "started_at": self._session.get("started_at", ""),
+                "started_at": self._session.get("started_at", "") if self._session else "",
             }
 
     def list_datasets(self) -> List[Dict[str, Any]]:
@@ -121,10 +122,11 @@ class RecordingManager:
             logger.info(f"Recording started: session={session_id}, dataset={dataset_id}")
             return self.get_status()
 
-    def stop(self) -> Dict[str, Any]:
+    def stop(self, save: bool = True) -> Dict[str, Any]:
         with self._lock:
             if self._state != "recording":
                 return {"state": "idle", "message": "No active recording session."}
+            self._should_save = save
             self._stop_event.set()
 
         # Wait for thread to finish (max 3 sec)
@@ -134,9 +136,60 @@ class RecordingManager:
         with self._lock:
             result = self.get_status()
             result["state"] = "stopped"
+            result["saved"] = save
             self._state = "idle"
-            logger.info(f"Recording stopped. Episodes: {self._episode_count}, Frames: {self._frame_count}")
+            if save:
+                logger.info(f"Recording stopped (saved). Episodes: {self._episode_count}, Frames: {self._frame_count}")
+            else:
+                logger.info(f"Recording discarded. Episodes and data removed.")
             return result
+
+    def replay(self, episode_index: int = -1) -> Dict[str, Any]:
+        with self._lock:
+            if self._state != "idle":
+                raise ConflictError(
+                    f"Cannot replay while state is '{self._state}'.",
+                    current_status=self.get_status()
+                )
+
+        # Find the most recent dataset
+        datasets = self.list_datasets()
+        if not datasets:
+            return {"status": "error", "message": "No recorded datasets available for replay."}
+
+        dataset = datasets[0]  # most recent (sorted descending)
+        dataset_dir = DATASETS_DIR / dataset["id"] / "episodes"
+
+        if not dataset_dir.exists():
+            return {"status": "error", "message": "No episodes found in latest dataset."}
+
+        episode_files = sorted(dataset_dir.glob("episode_*.json"))
+        if not episode_files:
+            return {"status": "error", "message": "No episode files found."}
+
+        # Resolve index
+        idx = episode_index if episode_index >= 0 else len(episode_files) + episode_index
+        if idx < 0 or idx >= len(episode_files):
+            return {"status": "error", "message": f"Episode index {episode_index} out of range (0-{len(episode_files)-1})."}
+
+        ep_path = episode_files[idx]
+        try:
+            with open(ep_path, "r") as f:
+                episode_data = json.load(f)
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to read episode: {e}"}
+
+        logger.info(f"Replaying episode {idx} from dataset {dataset['id']} ({episode_data.get('frame_count', 0)} frames)")
+
+        return {
+            "status": "ok",
+            "dataset_id": dataset["id"],
+            "episode_index": idx,
+            "episode_id": episode_data.get("episode_id", idx),
+            "frame_count": episode_data.get("frame_count", 0),
+            "duration_sec": episode_data.get("duration_sec", 0),
+            "frames": episode_data.get("frames", []),
+        }
 
     # ── Internal ──
 
@@ -177,47 +230,59 @@ class RecordingManager:
                         if self._stop_event.wait(timeout=sleep_t):
                             break
 
-                # Save episode
-                episode_data = {
-                    "episode_id": ep_idx,
-                    "robot_type": robot_type,
-                    "mode": mode,
-                    "frame_count": len(frames),
-                    "duration_sec": round(len(frames) / hz, 2),
-                    "frames": frames,
-                }
-                ep_path = episodes_dir / f"episode_{ep_idx:04d}.json"
-                with open(ep_path, "w") as f:
-                    json.dump(episode_data, f)
+                # Save episode only if save flag is set
+                if self._should_save:
+                    episode_data = {
+                        "episode_id": ep_idx,
+                        "robot_type": robot_type,
+                        "mode": mode,
+                        "frame_count": len(frames),
+                        "duration_sec": round(len(frames) / hz, 2),
+                        "frames": frames,
+                    }
+                    ep_path = episodes_dir / f"episode_{ep_idx:04d}.json"
+                    with open(ep_path, "w") as f:
+                        json.dump(episode_data, f)
 
-                with self._lock:
-                    self._episode_count += 1
-                    total_frames += len(frames)
+                    with self._lock:
+                        self._episode_count += 1
+                        total_frames += len(frames)
 
-                logger.info(f"Episode {ep_idx} saved: {len(frames)} frames")
+                    logger.info(f"Episode {ep_idx} saved: {len(frames)} frames")
+                else:
+                    logger.info(f"Episode {ep_idx} discarded (save=False)")
 
         except Exception as e:
             logger.error(f"Recording loop error: {e}")
         finally:
-            # Save dataset metadata
-            duration = round(time.time() - t_start, 2)
-            meta = {
-                "dataset_id": dataset_id,
-                "robot_type": robot_type,
-                "mode": mode,
-                "episode_count": self._episode_count,
-                "total_frames": total_frames,
-                "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "duration_sec": duration,
-                "hz": hz,
-            }
-            with open(dataset_dir / "meta.json", "w") as f:
-                json.dump(meta, f, indent=2)
+            if self._should_save:
+                # Save dataset metadata
+                duration = round(time.time() - t_start, 2)
+                meta = {
+                    "dataset_id": dataset_id,
+                    "robot_type": robot_type,
+                    "mode": mode,
+                    "episode_count": self._episode_count,
+                    "total_frames": total_frames,
+                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "duration_sec": duration,
+                    "hz": hz,
+                }
+                with open(dataset_dir / "meta.json", "w") as f:
+                    json.dump(meta, f, indent=2)
+                logger.info(f"Recording loop finished. Dataset: {dataset_id}")
+            else:
+                # Discard: remove the dataset directory
+                import shutil
+                try:
+                    shutil.rmtree(dataset_dir)
+                    logger.info(f"Discarded dataset directory: {dataset_dir}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up discarded dataset: {e}")
 
             with self._lock:
                 if self._state == "recording":
                     self._state = "idle"
-            logger.info(f"Recording loop finished. Dataset: {dataset_id}")
 
     def _generate_dry_run_frame(self, t: float, robot_type: str) -> Dict[str, Any]:
         """Generate a synthetic frame with smooth sinusoidal joint motion."""

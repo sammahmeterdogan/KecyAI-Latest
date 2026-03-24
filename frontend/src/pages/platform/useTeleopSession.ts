@@ -25,7 +25,7 @@ export function useTeleopSession() {
 
     const refreshRuntime = useCallback(async () => {
         try {
-            await lerobotClient.health(); // existing client
+            await lerobotClient.getHealth();
             setRuntimeOnline(true);
             setError("");
         } catch (e: any) {
@@ -47,7 +47,8 @@ export function useTeleopSession() {
     const refreshLogs = useCallback(async () => {
         try {
             const l = await lerobotClient.teleopLogs();
-            setLogs(typeof l === "string" ? l : (l?.logs ?? ""));
+            const logArr = l?.logs ?? [];
+            setLogs(Array.isArray(logArr) ? logArr.join('\n') : String(logArr));
         } catch (e: any) {
             // keep last logs; do not spam errors
         }
@@ -57,7 +58,10 @@ export function useTeleopSession() {
         setBusy(true);
         setError("");
         try {
-            await lerobotClient.teleopStart(cfg);
+            await lerobotClient.teleopStart({
+                robot_type: cfg.follower ?? 'so101_follower',
+                teleop_type: cfg.leader ?? 'web',
+            });
             await refreshStatus();
             await refreshLogs();
         } catch (e: any) {
