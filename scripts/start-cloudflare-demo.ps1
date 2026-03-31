@@ -1,3 +1,7 @@
+param(
+  [switch]$SkipPreflight
+)
+
 $ErrorActionPreference = "Continue"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -19,8 +23,24 @@ try {
   Log "Repo root: $repoRoot"
   Log "Starting docker compose stack with Cloudflare Quick Tunnel (project=kecyai)..."
 
+  if (-not $SkipPreflight) {
+    $preflightScript = Join-Path $scriptDir "preflight.ps1"
+    if (Test-Path $preflightScript) {
+      Log "Running preflight checks..."
+      & $preflightScript
+      if ($LASTEXITCODE -ne 0) {
+        throw "Preflight failed. See preflight log under scripts/_logs."
+      }
+    } else {
+      Log "WARN: preflight script not found. Continuing without preflight."
+    }
+  } else {
+    Log "Skipping preflight checks (--SkipPreflight)."
+  }
+
   $env:COMPOSE_BAKE = "0"
   $composeBase = "infra/compose/docker-compose.yml"
+  $composeWeb = "infra/compose/docker-compose.web.yml"
   $composeCloudflare = "infra/compose/docker-compose.cloudflare.yml"
 
   cmd /c "docker version" 2>&1 | Tee-Object -FilePath $logFile -Append | Out-Null
@@ -35,7 +55,7 @@ try {
 
   $prevPref = $ErrorActionPreference
   $ErrorActionPreference = "SilentlyContinue"
-  cmd /c "docker compose -p kecyai -f $composeBase -f $composeCloudflare up -d --build" 2>&1 | Tee-Object -FilePath $logFile -Append
+  cmd /c "docker compose -p kecyai -f $composeBase -f $composeWeb -f $composeCloudflare up -d --build" 2>&1 | Tee-Object -FilePath $logFile -Append
   $ErrorActionPreference = $prevPref
   if ($LASTEXITCODE -ne 0) {
     throw "docker compose up failed (exit code: $LASTEXITCODE)"

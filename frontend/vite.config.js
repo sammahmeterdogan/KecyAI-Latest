@@ -13,8 +13,8 @@ export default defineConfig({
 
     proxy: {
       '/api': {
-        // Local default works on host; compose can override with VITE_API_PROXY_TARGET.
-        target: process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8080',
+        // Browser dev stays same-origin and proxies to the single Python runtime service.
+        target: process.env.VITE_API_BASE_URL || 'http://127.0.0.1:8040',
         changeOrigin: true,
         secure: false,
       },

@@ -1,0 +1,18 @@
+{
+  "name": "kecy-ai-desktop",
+  "version": "0.1.0",
+  "description": "KECY AI Desktop Launcher",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "npm.cmd --prefix ..\\frontend run dev -- --host",
+    "build:frontend": "npm.cmd --prefix ..\\frontend run build",
+    "build:bundle-assets": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ..\\scripts\\build-bundle-assets.ps1",
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}

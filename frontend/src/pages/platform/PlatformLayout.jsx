@@ -1,24 +1,45 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import PlatformSidebar from '../../components/platform/PlatformSidebar';
 import PlatformBackground from '../../components/backgrounds/PlatformBackground';
+import {
+    isTauriRuntime,
+    readCachedDesktopServiceSnapshot,
+    subscribeDesktopServiceSnapshot,
+    syncDesktopServiceSnapshot,
+} from '../../lib/desktopService';
 
-/* Routes that render full-bleed (no glass card, no padding) */
-const FULL_BLEED_PREFIXES = [];
+function resolveShellFrame(pathname) {
+    if (pathname.startsWith('/kecy/platform/teleop')) {
+        return {
+            outerPadding: '30px 34px',
+            innerPadding: '24px 24px',
+            maxWidth: 1460,
+            borderRadius: 24,
+        };
+    }
+
+    return {
+        outerPadding: '40px 40px',
+        innerPadding: '40px 36px',
+        maxWidth: 1200,
+        borderRadius: 20,
+    };
+}
 
 export default function PlatformLayout() {
     const [capabilities, setCapabilities] = useState([]);
     const [capLoading, setCapLoading] = useState(true);
     const [capError, setCapError] = useState(null);
     const [version, setVersion] = useState(null);
+    const [desktopService, setDesktopService] = useState(readCachedDesktopServiceSnapshot);
 
     const location = useLocation();
     const [displayLocation, setDisplayLocation] = useState(location);
     const [transitionStage, setTransitionStage] = useState('enter');
-
-    const isFullBleed = FULL_BLEED_PREFIXES.some(
-        (prefix) => location.pathname.startsWith(prefix)
+    const shellFrame = useMemo(
+        () => resolveShellFrame(displayLocation.pathname),
+        [displayLocation.pathname],
     );
 
     useEffect(() => {
@@ -33,17 +54,61 @@ export default function PlatformLayout() {
     }, [location, displayLocation]);
 
     useEffect(() => {
+        if (!isTauriRuntime()) return undefined;
+        let cancelled = false;
+
+        const refreshStatus = async () => {
+            try {
+                const next = await syncDesktopServiceSnapshot();
+                if (!cancelled) {
+                    setDesktopService(next);
+                }
+            } catch {
+                if (!cancelled) {
+                    setDesktopService((prev) => ({
+                        ...prev,
+                        state: 'ERROR',
+                        healthy: false,
+                        message: 'Failed to read desktop service state.',
+                    }));
+                }
+            }
+        };
+
+        refreshStatus();
+        const timer = setInterval(refreshStatus, 2500);
+        const unsubscribe = subscribeDesktopServiceSnapshot((next) => {
+            if (!cancelled) {
+                setDesktopService(next);
+            }
+        });
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+            unsubscribe();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (isTauriRuntime() && !['READY', 'WORKING'].includes(desktopService.state)) {
+            setCapabilities([]);
+            setVersion(null);
+            setCapError(null);
+            setCapLoading(false);
+            return;
+        }
+
         const init = async () => {
             setCapLoading(true);
+            setCapError(null);
             try {
-                // Dynamic import to avoid circular dependency if any
                 const { LeRobotClient } = await import('../../lib/api/lerobotClient');
 
                 try {
                     const capData = await LeRobotClient.getCapabilities();
                     setCapabilities(capData.capabilities || []);
                 } catch (e) {
-                    console.warn("Capabilities check failed (offline/500):", e.message);
+                    console.warn('Capabilities check failed (offline/500):', e.message);
                     setCapabilities([]);
                 }
 
@@ -51,17 +116,17 @@ export default function PlatformLayout() {
                     const verData = await LeRobotClient.getVersion();
                     setVersion(verData);
                 } catch (e) {
-                    console.warn("Version check failed:", e.message);
+                    console.warn('Version check failed:', e.message);
                 }
             } catch (err) {
-                console.error("Critical runtime init failure:", err);
-                setCapError("Offline");
+                console.error('Critical runtime init failure:', err);
+                setCapError('Offline');
             } finally {
                 setCapLoading(false);
             }
         };
         init();
-    }, []);
+    }, [desktopService.serviceUrl, desktopService.state]);
 
     const animationStyle = {
         animation: transitionStage === 'enter'
@@ -71,57 +136,47 @@ export default function PlatformLayout() {
 
     return (
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'row', position: 'relative', isolation: 'isolate' }}>
-
-            {/* Background — always z-0, pointer-events-none */}
             <PlatformBackground />
 
-            {/* Sidebar */}
             <PlatformSidebar
                 capabilities={capabilities}
-                runtimeOnline={!capError}
+                runtimeOnline={isTauriRuntime() ? ['READY', 'WORKING'].includes(desktopService.state) : !capError}
                 runtimeSha={version?.git_sha}
                 appVersion="v2.1.0"
             />
 
-            {/* Main content area */}
-            <main className="flex-1 min-w-0 h-screen overflow-hidden flex flex-col relative z-10">
-                {isFullBleed ? (
-                    /*
-                     * FULL-BLEED: Teleop gibi ağır sayfalar için.
-                     * Glass card yok, padding yok, animation yok.
-                     * Direkt h-full geçiş.
-                     */
-                    <div className="h-full w-full overflow-hidden">
-                        <Outlet />
-                    </div>
-                ) : (
-                    /* STANDARD: Glass card wrapper */
-                    <div style={{
+            <main className="relative z-10 flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+                <div
+                    style={{
                         flex: 1,
-                        display: 'flex', justifyContent: 'center',
-                        padding: '40px 40px',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        padding: shellFrame.outerPadding,
                         overflowY: 'auto',
                         scrollbarWidth: 'none',
-                        msOverflowStyle: 'none'
-                    }}>
-                        <div style={{
+                        msOverflowStyle: 'none',
+                    }}
+                >
+                    <div
+                        style={{
                             background: 'rgba(10,10,10,0.50)',
-                            backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                            backdropFilter: 'blur(20px)',
+                            WebkitBackdropFilter: 'blur(20px)',
                             border: '1px solid rgba(240,243,243,0.12)',
-                            borderRadius: 20, padding: '40px 36px',
-                            maxWidth: 1200, width: '100%', alignSelf: 'flex-start',
+                            borderRadius: shellFrame.borderRadius,
+                            padding: shellFrame.innerPadding,
+                            maxWidth: shellFrame.maxWidth,
+                            width: '100%',
+                            alignSelf: 'flex-start',
                             boxShadow: '0 8px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)',
-                            minHeight: 'min-content'
-                        }}>
-                            <div
-                                key={displayLocation.pathname}
-                                style={animationStyle}
-                            >
-                                <Outlet />
-                            </div>
+                            minHeight: 'min-content',
+                        }}
+                    >
+                        <div key={displayLocation.pathname} style={animationStyle}>
+                            <Outlet />
                         </div>
                     </div>
-                )}
+                </div>
             </main>
 
             <style>{`

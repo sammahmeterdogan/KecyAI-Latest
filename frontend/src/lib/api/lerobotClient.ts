@@ -14,20 +14,63 @@ import {
     TeleopStatus,
     TorqueReadResponse,
 } from '../../types/lerobot';
+import { DEFAULT_LOCAL_SERVICE_URL, getCachedDesktopServiceUrl, isTauriRuntime } from '../desktopService';
 
 // ---------------------------------------------------------------------------
 // Base URL
 // ---------------------------------------------------------------------------
-// In dev, Vite proxies /api/* to the backend (default http://127.0.0.1:8080).
-// In production, a reverse proxy (nginx / Cloudflare) does the same.
-// Use empty string (relative URL) unless explicitly overridden.
-const API_BASE = (import.meta.env.VITE_KECYAI_BACKEND_URL as string | undefined) || '';
+// Browser-first mode talks to a single local KECYAI service. Tauri launcher
+// still needs a concrete localhost target because its own origin is not HTTP.
+const SAVED_PORT_KEY = 'kecyai_robot_port';
 
 type FetchOptions = RequestInit & { timeout?: number };
+type RuntimeGamepadStatus = {
+    backend: string;
+    pygame_available: boolean;
+    connected: boolean;
+    active: boolean;
+    selected_index: number | null;
+    speed: number;
+    available_gamepads: Array<{ index: number; id: string; name: string; guid?: string; axes?: number; buttons?: number; hats?: number; backend?: string }>;
+    analog_values: { leftStickX: number; leftStickY: number; rightStickX: number; rightStickY: number; leftTrigger: number; rightTrigger: number };
+    active_buttons: string[];
+    message?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function stripTrailingSlash(url: string): string {
+    return url.replace(/\/+$/, '');
+}
+
+function isLocalFrontendHost(): boolean {
+    if (typeof window === 'undefined') return true;
+    const { hostname } = window.location;
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+function resolveBackendBaseUrl(): string {
+    const explicit = import.meta.env.VITE_API_BASE_URL as string | undefined;
+    if (isTauriRuntime()) {
+        return stripTrailingSlash(getCachedDesktopServiceUrl() || explicit?.trim() || DEFAULT_LOCAL_SERVICE_URL);
+    }
+    if (typeof window !== 'undefined' && isLocalFrontendHost()) return stripTrailingSlash(window.location.origin);
+    if (explicit?.trim()) return stripTrailingSlash(explicit);
+    return '';
+}
+
+export function getBackendBaseUrl(): string {
+    const resolved = resolveBackendBaseUrl();
+    if (resolved) return resolved;
+    if (typeof window !== 'undefined') return window.location.origin;
+    return DEFAULT_LOCAL_SERVICE_URL;
+}
+
+export function getRuntimeBaseUrl(): string {
+    return getBackendBaseUrl();
+}
 
 function withQuery(endpoint: string, params?: Record<string, string | number | boolean | null | undefined>): string {
     if (!params) return endpoint;
@@ -40,6 +83,15 @@ function withQuery(endpoint: string, params?: Record<string, string | number | b
     return query ? `${endpoint}?${query}` : endpoint;
 }
 
+function getSavedRobotPort(): string {
+    if (typeof window === 'undefined') return '';
+    try {
+        return window.localStorage.getItem(SAVED_PORT_KEY)?.trim() || '';
+    } catch {
+        return '';
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -48,13 +100,13 @@ export class LeRobotClient {
 
     // ── Core fetch ────────────────────────────────────────────────────
 
-    private static async fetch<T>(endpoint: string, options?: FetchOptions): Promise<T> {
+    private static async request<T>(url: string, options?: FetchOptions): Promise<T> {
         const controller = new AbortController();
         const timeout = options?.timeout ?? 5000;
         const id = setTimeout(() => controller.abort(), timeout);
 
         try {
-            const res = await fetch(`${API_BASE}${endpoint}`, {
+            const res = await fetch(url, {
                 ...options,
                 signal: controller.signal,
                 headers: {
@@ -95,10 +147,18 @@ export class LeRobotClient {
         }
     }
 
+    private static async fetch<T>(endpoint: string, options?: FetchOptions): Promise<T> {
+        return this.request<T>(`${getBackendBaseUrl()}${endpoint}`, options);
+    }
+
     // ── Health & Metadata ─────────────────────────────────────────────
 
     static async getHealth(): Promise<LeRobotHealth> {
         return this.fetch<LeRobotHealth>('/api/lerobot/health', { timeout: 3000 });
+    }
+
+    static async getReadiness(): Promise<LeRobotHealth> {
+        return this.fetch<LeRobotHealth>('/api/lerobot/ready', { timeout: 3000 });
     }
 
     static async getVersion(): Promise<LeRobotVersion> {
@@ -118,29 +178,69 @@ export class LeRobotClient {
         }
     }
 
-    /**
-     * PhosphoBot-compatible /status wrapper.
-     * Returns a ServerStatus shape by fetching teleop status + health.
-     * Callers that only need health should use getHealth() instead.
-     */
+    static async getSupervisedHealth(): Promise<{ backendHealthy: boolean; runtimeHealthy: boolean }> {
+        const [health, readiness] = await Promise.all([
+            this.fetch<{
+                status: string;
+            }>('/api/health', { timeout: 3000 }).catch(() => null),
+            this.fetch<{
+                status: string;
+            }>('/api/ready', { timeout: 3000 }).catch(() => null),
+        ]);
+
+        const backendHealthy = Boolean(health?.status === 'ok');
+        const runtimeHealthy = Boolean(readiness?.status === 'ok');
+
+        return { backendHealthy, runtimeHealthy };
+    }
+
     static async getServerStatus(): Promise<ServerStatus> {
-        try {
-            const health = await this.fetch<{ status: string }>('/api/health', { timeout: 3000 });
-            return {
-                status: health.status === 'ok' ? 'ok' : 'error',
-                name: 'kecyai',
-                robots: [],
-                robot_status: [],
-                cameras: {},
-                is_recording: false,
-                ai_running_status: 'stopped',
-                leader_follower_status: false,
-                server_ip: '',
-                server_port: 0,
-            };
-        } catch {
-            throw new Error('Backend unreachable');
+        const [{ backendHealthy, runtimeHealthy }, config, teleopStatus] = await Promise.all([
+            this.getSupervisedHealth(),
+            this.adminGetConfig().catch(() => null),
+            this.teleopStatus().catch(() => null),
+        ]);
+
+        // If the runtime service is completely unreachable, propagate the error so callers
+        // can set connectionState → 'offline'.  If only the runtime is down we
+        // stay 'online' but expose no robots so the user gets an accurate state.
+        if (!backendHealthy) {
+            throw new Error('Runtime service unreachable');
         }
+
+        const robotName = teleopStatus?.metadata?.robot_type || config?.robot_type || 'so101_follower';
+        const configuredPort = config?.serial_port?.trim() || getSavedRobotPort();
+        const isDryRun = Boolean(teleopStatus?.dry_run || teleopStatus?.metadata?.dry_run);
+        const deviceName = configuredPort || (isDryRun ? 'dry-run' : '');
+        const shouldExposeRobot = Boolean(configuredPort) || isDryRun || teleopStatus?.state === 'running';
+
+        const robotStatus = shouldExposeRobot
+            ? [{
+                name: robotName,
+                robot_type: 'manipulator' as const,
+                device_name: deviceName || (runtimeHealthy ? 'runtime' : 'configured'),
+            }]
+            : [];
+
+        let resolvedPort = 8040;
+        try {
+            resolvedPort = Number(new URL(getBackendBaseUrl()).port || '80');
+        } catch {
+            resolvedPort = 8040;
+        }
+
+        return {
+            status: backendHealthy && runtimeHealthy ? 'ok' : 'error',
+            name: 'kecyai',
+            robots: robotStatus.map((robot) => robot.name),
+            robot_status: robotStatus,
+            cameras: {},
+            is_recording: false,
+            ai_running_status: teleopStatus?.state === 'running' ? 'running' : 'stopped',
+            leader_follower_status: teleopStatus?.state === 'running',
+            server_ip: '127.0.0.1',
+            server_port: resolvedPort,
+        };
     }
 
     // ── Teleop ────────────────────────────────────────────────────────
@@ -149,7 +249,7 @@ export class LeRobotClient {
         return this.fetch<TeleopStatus>('/api/lerobot/teleop/status', { timeout: 3000 });
     }
 
-    static async teleopStart(config?: { robot_type?: string; teleop_type?: string }): Promise<TeleopStatus> {
+    static async teleopStart(config?: { robot_type?: string; teleop_type?: string; robot_port?: string; teleop_port?: string }): Promise<TeleopStatus> {
         return this.fetch<TeleopStatus>('/api/lerobot/teleop/start', {
             method: 'POST',
             body: JSON.stringify(config ?? { robot_type: 'so101_follower', teleop_type: 'web' }),
@@ -168,6 +268,38 @@ export class LeRobotClient {
         return this.fetch<TeleopLogResponse>(withQuery('/api/lerobot/teleop/logs', { tail }));
     }
 
+    static teleopTelemetryStreamUrl(): string {
+        return `${getBackendBaseUrl()}/api/lerobot/teleop/telemetry/stream`;
+    }
+
+    static async gamepadStatus(): Promise<RuntimeGamepadStatus> {
+        return this.fetch<RuntimeGamepadStatus>('/api/lerobot/gamepad/status', { timeout: 3000 });
+    }
+
+    static async gamepadStart(payload?: { controller_index?: number | null; speed?: number }): Promise<RuntimeGamepadStatus> {
+        return this.fetch<RuntimeGamepadStatus>('/api/lerobot/gamepad/start', {
+            method: 'POST',
+            body: JSON.stringify(payload ?? {}),
+            timeout: 5000,
+        });
+    }
+
+    static async gamepadStop(): Promise<RuntimeGamepadStatus> {
+        return this.fetch<RuntimeGamepadStatus>('/api/lerobot/gamepad/stop', {
+            method: 'POST',
+            body: JSON.stringify({}),
+            timeout: 5000,
+        });
+    }
+
+    static async gamepadConfigure(payload?: { controller_index?: number | null; speed?: number }): Promise<RuntimeGamepadStatus> {
+        return this.fetch<RuntimeGamepadStatus>('/api/lerobot/gamepad/config', {
+            method: 'POST',
+            body: JSON.stringify(payload ?? {}),
+            timeout: 5000,
+        });
+    }
+
     /**
      * Read joint positions from the runtime.
      * Backend: GET /api/lerobot/teleop/joints → { joints: [{id, name, position, min, max}] }
@@ -180,35 +312,63 @@ export class LeRobotClient {
         unit?: string;
         joints_ids?: number[] | null;
         source?: string;
-    }): Promise<{ joints: Array<{ id: string; name: string; position: number; min: number; max: number }>; angles: Array<number | null> }> {
-        const data = await this.fetch<{ joints: Array<{ id: string; name: string; position: number; min: number; max: number }> }>(
-            '/api/lerobot/teleop/joints', { timeout: 3000 }
+    }): Promise<{ joints: Array<{ id: string; servo_id?: number; name: string; position: number; temperature?: number | null; min: number; max: number }>; angles: Array<number | null> }> {
+        const data = await this.fetch<{
+            joints?: Array<{ id: string; servo_id?: number; name: string; position: number; temperature?: number | null; min: number; max: number }>;
+            angles?: Array<number | null>;
+        }>(
+            withQuery('/api/lerobot/teleop/joints', {
+                unit: args?.unit || 'degrees',
+                joints_ids: Array.isArray(args?.joints_ids) ? args?.joints_ids.join(',') : undefined,
+                source: args?.source || 'robot',
+            }),
+            { timeout: 3000 }
         );
         return {
             joints: data.joints ?? [],
-            angles: (data.joints ?? []).map(j => j.position),
+            angles: data.angles ?? (data.joints ?? []).map(j => j.position),
         };
     }
 
     /**
      * Write joint positions.
-     * Maps the PhosphoBot writeJoints({angles, unit, joints_ids}) call to
-     * the KECY AI POST /api/lerobot/teleop/command endpoint.
+     * Maps legacy writeJoints({angles, unit, joints_ids}) calls to
+     * the KECYAI POST /api/lerobot/teleop/command endpoint.
      */
     static async writeJoints(args: {
         robotId?: number;
         angles: number[];
         unit?: string;
         joints_ids?: number[] | null;
+        joint_names?: string[] | null;
     }): Promise<{ status: string; message?: string }> {
-        const JOINT_IDS = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper'];
-        const joints = args.angles.map((pos, i) => ({
-            id: JOINT_IDS[i] ?? `joint_${i}`,
-            position: pos,
-        }));
+        // Servo-ID-to-name lookup (matches SO-101 hardware)
+        const SERVO_ID_TO_NAME: Record<number, string> = {
+            1: 'shoulder_pan',
+            2: 'shoulder_lift',
+            3: 'elbow_flex',
+            4: 'wrist_flex',
+            5: 'wrist_roll',
+            6: 'gripper',
+        };
+        const ALL_JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper'];
+
+        const joints = args.angles.map((pos, i) => {
+            // Priority: explicit joint_names > servo ID lookup > fallback by index
+            let name: string;
+            if (args.joint_names && args.joint_names[i]) {
+                name = args.joint_names[i];
+            } else if (args.joints_ids && args.joints_ids[i] != null) {
+                name = SERVO_ID_TO_NAME[args.joints_ids[i]] ?? `joint_${args.joints_ids[i]}`;
+            } else {
+                name = ALL_JOINT_NAMES[i] ?? `joint_${i}`;
+            }
+            return { id: name, position: pos };
+        });
+
         return this.fetch('/api/lerobot/teleop/command', {
             method: 'POST',
-            body: JSON.stringify({ mode: 'manual', joints }),
+            body: JSON.stringify({ mode: 'manual', unit: args.unit || 'degrees', joints }),
             timeout: 3000,
         });
     }
@@ -239,7 +399,7 @@ export class LeRobotClient {
 
     // ── Poses ─────────────────────────────────────────────────────────
 
-    /** Move robot to home/init position. Maps PhosphoBot moveInit. */
+    /** Move robot to home/init position. */
     static async moveInit(_robotId: number = 0): Promise<{ status: string; message?: string }> {
         return this.fetch('/api/lerobot/teleop/pose/home', {
             method: 'POST',
@@ -252,16 +412,16 @@ export class LeRobotClient {
         return this.moveInit(robotId);
     }
 
-    /** Move robot to sleep/stop position. Maps PhosphoBot moveSleep. */
+    /** Move robot to safe home position before stopping. */
     static async moveSleep(_robotId: number = 0): Promise<{ status: string; message?: string }> {
-        return this.fetch('/api/lerobot/teleop/stop', {
+        return this.fetch('/api/lerobot/teleop/pose/home', {
             method: 'POST',
             timeout: 10000,
         });
     }
 
     /**
-     * Cartesian absolute move (PhosphoBot compatibility).
+     * Cartesian absolute move compatibility shim.
      * Maps to writeJoints with zero positions as a best-effort fallback
      * since KECY AI uses joint-based control rather than cartesian IK.
      */
@@ -280,7 +440,7 @@ export class LeRobotClient {
     }
 
     /**
-     * Cartesian relative move (PhosphoBot compatibility).
+     * Cartesian relative move compatibility shim.
      * Sends the delta payload to the teleop command endpoint.
      * The runtime handles conversion to joint space if supported,
      * otherwise this acts as a no-op.
@@ -337,7 +497,7 @@ export class LeRobotClient {
 
     // ── Calibration ───────────────────────────────────────────────────
 
-    /** PhosphoBot-compatible single-step calibrate. */
+    /** Compatibility helper for single-step calibration start. */
     static async calibrate(robotId: number = 0): Promise<CalibrationResponse> {
         return this.fetch<CalibrationResponse>(
             '/api/lerobot/calibration/start',
@@ -353,6 +513,7 @@ export class LeRobotClient {
         return this.fetch<CalibrationStatus>('/api/lerobot/calibration/start', {
             method: 'POST',
             body: JSON.stringify(payload ?? {}),
+            timeout: 30000, // hardware connect (COM port open + servo init) can take 10-15s
         });
     }
 
@@ -360,6 +521,7 @@ export class LeRobotClient {
         return this.fetch<CalibrationStepResponse>('/api/lerobot/calibration/step', {
             method: 'POST',
             body: JSON.stringify(payload ?? {}),
+            timeout: 15000, // confirm step writes homing offsets to 6 motors
         });
     }
 
@@ -621,8 +783,7 @@ export class LeRobotClient {
         onData: (data: { logs: string[]; cursor: number; state: string; done?: boolean }) => void,
         onError?: (error: Event) => void,
     ): EventSource {
-        const base = API_BASE || window.location.origin;
-        const es = new EventSource(`${base}/api/lerobot/train/logs/stream`);
+        const es = new EventSource(`${getBackendBaseUrl()}/api/lerobot/train/logs/stream`);
 
         es.onmessage = (event) => {
             try {

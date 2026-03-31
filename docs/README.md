@@ -11,4 +11,5 @@ Key guides:
 - `guides/README.md`: guide index.
 - `guides/zero_terminal_setup.md`: end-to-end operator flow and API quick reference.
 - `guides/startup_profiles.md`: canonical startup profiles, setup matrix, and troubleshooting tree.
+- `architecture/upstream_reference_policy.md`: phosphobot-first workflow for adapting upstream robotics features into KECYAI.
 - `phases/README.md`: phase document index.

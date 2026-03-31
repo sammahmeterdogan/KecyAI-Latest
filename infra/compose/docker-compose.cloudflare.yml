@@ -1,7 +1,7 @@
 services:
   frontend:
     environment:
-      - VITE_API_PROXY_TARGET=http://backend:8080
+      - VITE_API_BASE_URL=http://runtime:8040
 
   cloudflared:
     image: cloudflare/cloudflared:latest

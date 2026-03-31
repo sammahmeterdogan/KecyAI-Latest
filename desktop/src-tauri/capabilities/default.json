@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicholasrice/tauri-docs/schemahost/references/v2/acl-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for KECY AI Desktop",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open"
+  ]
+}

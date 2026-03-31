@@ -5,5 +5,5 @@ scriptDir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScri
 repoRoot  = CreateObject("Scripting.FileSystemObject").GetParentFolderName(scriptDir)
 ps1       = Chr(34) & repoRoot & "\scripts\start.ps1" & Chr(34)
 
-cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File " & ps1
+cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File " & ps1 & " -Target desktop"
 shell.Run cmd, 0, False

@@ -1,1363 +1,847 @@
-"""
-KECY AI — LeRobot Runtime API Server
-HTTP server exposing verified LeRobot capabilities + telemetry SSE.
+from __future__ import annotations
 
-Uses ThreadingHTTPServer to support concurrent requests (SSE + regular).
-"""
+import asyncio
+from functools import wraps
+import importlib.util
 import json
+import os
 import subprocess
 import sys
-import time
+import urllib.error
 import urllib.parse
-import glob
-import re
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from socketserver import ThreadingMixIn
+import urllib.request
+from contextlib import asynccontextmanager
 from pathlib import Path
-# ConflictError is imported lazily along with TeleopManager
+from typing import Any, Optional
 
-PORT = 8100
+import uvicorn
+from fastapi import FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
-# ThreadingHTTPServer: handles each request in a new thread
-# Required for SSE (long-lived connections) alongside regular requests
-class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-    daemon_threads = True
+from calibration.CalibrationManager import CalibrationConflictError
+from hardware_check import HardwareConfig
+from kecyai_runtime_core import KecyaiRuntimeState, detect_lerobot_version, normalize_unit
+from motors import ConflictError as MotorSetupConflictError
+from recording.RecordingManager import ConflictError as RecordingConflictError
+from runtime_exec import lerobot_checkout_dir
+from teleop.TeleopManager import ConflictError as TeleopConflictError
+from training.TrainingManager import ConflictError as TrainingConflictError
+
+DEFAULT_HOST = os.environ.get("KECYAI_SERVICE_HOST", "0.0.0.0")
+DEFAULT_PORT = int(os.environ.get("KECYAI_SERVICE_PORT", os.environ.get("PORT", "8040")))
+DEFAULT_FRONTEND_DEV_URL = os.environ.get("KECYAI_FRONTEND_DEV_URL", "http://127.0.0.1:3000")
+DEFAULT_SERVICE_NAME = os.environ.get("KECYAI_SERVICE_NAME", "kecyai")
 
 
+def _detect_repo_root() -> Path:
+    current = Path(__file__).resolve()
+    for candidate in (current.parent, *current.parents):
+        if (candidate / "frontend").exists() and (candidate / "runtime").exists():
+            return candidate
+    return current.parents[2]
 
-# Global Manager Instances (Lazy)
-_teleop_manager = None
-_calibration_manager = None
-_preflight_manager = None
-_calibration_admin = None
-_hardware_config = None
-_recording_manager = None
-_training_manager = None
-_motor_setup_manager = None
 
-def get_manager():
-    global _teleop_manager
-    if _teleop_manager is None:
+def _detect_frontend_dist() -> Optional[Path]:
+    env_value = os.environ.get("KECYAI_FRONTEND_DIST", "").strip()
+    repo_root = _detect_repo_root()
+    candidates = []
+    if env_value:
+        candidates.append(Path(env_value))
+    candidates.extend(
+        [
+            repo_root / "frontend" / "dist",
+            Path(sys.executable).resolve().parent / "frontend",
+        ]
+    )
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+    return None
+
+
+def _compute_service_url(host: str, port: int) -> str:
+    env_url = os.environ.get("KECYAI_SERVICE_URL", "").strip()
+    if env_url:
+        return env_url.rstrip("/")
+    public_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    return f"http://{public_host}:{port}"
+
+
+def _parse_int_list(raw: str | None) -> list[int] | None:
+    if not raw:
+        return None
+    values: list[int] = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
         try:
-            print("INFO: Initializing TeleopManager...")
-            from teleop.TeleopManager import TeleopManager
-            _teleop_manager = TeleopManager()
-            print("INFO: TeleopManager initialized successfully.")
-        except Exception as e:
-            print(f"ERROR: Failed to initialize TeleopManager: {e}")
-            import traceback
-            traceback.print_exc()
-            raise e
-    return _teleop_manager
-
-
-def get_calibration_manager():
-    global _calibration_manager
-    if _calibration_manager is None:
-        try:
-            print("INFO: Initializing CalibrationManager...")
-            from calibration.CalibrationManager import CalibrationManager
-            _calibration_manager = CalibrationManager()
-            print("INFO: CalibrationManager initialized successfully.")
-        except Exception as e:
-            print(f"ERROR: Failed to initialize CalibrationManager: {e}")
-            import traceback
-            traceback.print_exc()
-            raise e
-    return _calibration_manager
-
-
-def get_hardware_config():
-    global _hardware_config
-    if _hardware_config is None:
-        try:
-            print("INFO: Initializing HardwareConfig...")
-            from hardware_check import HardwareConfig
-            _hardware_config = HardwareConfig()
-            print(f"INFO: HardwareConfig initialized: {_hardware_config.get()}")
-        except Exception as e:
-            print(f"ERROR: Failed to initialize HardwareConfig: {e}")
-            raise e
-    return _hardware_config
-
-
-def get_preflight_manager():
-    global _preflight_manager
-    if _preflight_manager is None:
-        try:
-            print("INFO: Initializing PreflightManager...")
-            from hardware_check import PreflightManager
-            _preflight_manager = PreflightManager(hardware_config=get_hardware_config())
-            print("INFO: PreflightManager initialized successfully.")
-        except Exception as e:
-            print(f"ERROR: Failed to initialize PreflightManager: {e}")
-            raise e
-    return _preflight_manager
-
-
-def get_calibration_admin():
-    global _calibration_admin
-    if _calibration_admin is None:
-        try:
-            print("INFO: Initializing CalibrationAdmin...")
-            from calibration.CalibrationAdmin import CalibrationAdmin
-            _calibration_admin = CalibrationAdmin()
-            print("INFO: CalibrationAdmin initialized successfully.")
-        except Exception as e:
-            print(f"ERROR: Failed to initialize CalibrationAdmin: {e}")
-            raise e
-    return _calibration_admin
-
-
-def get_recording_manager():
-    global _recording_manager
-    if _recording_manager is None:
-        try:
-            print("INFO: Initializing RecordingManager...")
-            from recording.RecordingManager import RecordingManager
-            _recording_manager = RecordingManager()
-            print("INFO: RecordingManager initialized successfully.")
-        except Exception as e:
-            print(f"ERROR: Failed to initialize RecordingManager: {e}")
-            import traceback
-            traceback.print_exc()
-            raise e
-    return _recording_manager
-
-
-def get_training_manager():
-    global _training_manager
-    if _training_manager is None:
-        try:
-            print("INFO: Initializing TrainingManager...")
-            from training.TrainingManager import TrainingManager
-            _training_manager = TrainingManager()
-            print("INFO: TrainingManager initialized successfully.")
-        except Exception as e:
-            print(f"ERROR: Failed to initialize TrainingManager: {e}")
-            import traceback
-            traceback.print_exc()
-            raise e
-    return _training_manager
-
-
-def get_motor_setup_manager():
-    global _motor_setup_manager
-    if _motor_setup_manager is None:
-        try:
-            print("INFO: Initializing MotorSetupManager...")
-            from motors.MotorSetupManager import MotorSetupManager
-            _motor_setup_manager = MotorSetupManager()
-            print("INFO: MotorSetupManager initialized successfully.")
-        except Exception as e:
-            print(f"ERROR: Failed to initialize MotorSetupManager: {e}")
-            import traceback
-            traceback.print_exc()
-            raise e
-    return _motor_setup_manager
-
-
-class RuntimeHandler(BaseHTTPRequestHandler):
-    """Handles runtime API requests."""
-
-    def _respond(self, status: int, body: dict) -> None:
-        try:
-            response_body = json.dumps(body).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(response_body)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.end_headers()
-            self.wfile.write(response_body)
-        except Exception as e:
-            print(f"ERROR: Failed to send response: {e}")
-
-    def _read_body(self) -> dict:
-        """
-        Read and parse JSON request body.
-        Robust to missing Content-Length, empty bodies, and non-JSON content types.
-        Raises ValueError with clear message on parse failures.
-        """
-        try:
-            content_len = int(self.headers.get("Content-Length", 0))
-        except (TypeError, ValueError):
-            content_len = 0
-
-        if content_len == 0:
-            return {}
-
-        raw = self.rfile.read(content_len)
-        if not raw or not raw.strip():
-            return {}
-
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON body: {e}")
-
-        if not isinstance(parsed, dict):
-            raise ValueError(f"Request body must be a JSON object, got {type(parsed).__name__}")
-
-        return parsed
-
-    @staticmethod
-    def _enumerate_serial_ports() -> list[str]:
-        patterns = (
-            "/dev/ttyUSB*",
-            "/dev/ttyACM*",
-            "/dev/tty.usbmodem*",
-            "/dev/tty.usbserial*",
-        )
-        ports = []
-        for pattern in patterns:
-            ports.extend(glob.glob(pattern))
-        return sorted(set(ports))
-
-    @staticmethod
-    def _extract_ports_from_text(text: str) -> list[str]:
-        if not text:
-            return []
-        matches = re.findall(r"/dev/[A-Za-z0-9._-]+", text)
-        return sorted(set(matches))
-
-    def _scan_motorbus_ports(self) -> dict:
-        """
-        Try the official `lerobot-find-port` helper first and capture console output.
-        Fallback to direct serial enumeration when the helper is unavailable or returns no ports.
-        """
-        stdout = ""
-        stderr = ""
-        exit_code = None
-
-        try:
-            proc = subprocess.Popen(
-                ["lerobot-find-port"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            try:
-                stdout, stderr = proc.communicate(input="\n", timeout=12)
-                exit_code = proc.returncode
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                timeout_out, timeout_err = proc.communicate()
-                stdout = timeout_out or ""
-                stderr = timeout_err or ""
-                exit_code = -1
-        except FileNotFoundError:
-            fallback_ports = self._enumerate_serial_ports()
-            return {
-                "status": "warning" if fallback_ports else "empty",
-                "ports": fallback_ports,
-                "source": "fallback_enumeration",
-                "message": "lerobot-find-port is not available in runtime. Used /dev serial enumeration fallback.",
-                "stdout": [],
-                "stderr": [],
-                "exit_code": None,
-            }
-        except Exception as e:
-            fallback_ports = self._enumerate_serial_ports()
-            return {
-                "status": "warning" if fallback_ports else "error",
-                "ports": fallback_ports,
-                "source": "fallback_enumeration",
-                "message": f"Failed to run lerobot-find-port: {e}",
-                "stdout": [],
-                "stderr": [],
-                "exit_code": None,
-            }
-
-        parsed_ports = self._extract_ports_from_text(stdout)
-        fallback_ports = self._enumerate_serial_ports()
-        ports = parsed_ports if parsed_ports else fallback_ports
-
-        if ports:
-            if parsed_ports:
-                message = "Ports detected via lerobot-find-port output."
-                source = "lerobot_find_port"
-            else:
-                message = "No parsable ports in lerobot-find-port output. Used /dev serial enumeration fallback."
-                source = "fallback_enumeration"
-            status = "ok"
-        else:
-            message = "No serial ports detected. Connect MotorBus and press refresh."
-            source = "lerobot_find_port"
-            status = "empty"
-
-        return {
-            "status": status,
-            "ports": ports,
-            "source": source,
-            "message": message,
-            "stdout": [line for line in (stdout or "").splitlines() if line.strip()][-120:],
-            "stderr": [line for line in (stderr or "").splitlines() if line.strip()][-60:],
-            "exit_code": exit_code,
-        }
-
-    def do_GET(self) -> None:
-        parsed_path = urllib.parse.urlparse(self.path)
-        path = parsed_path.path
-        query = urllib.parse.parse_qs(parsed_path.query)
-
-        if path == "/health":
-            # Health check must pass even if LeRobot is broken
-            self._respond(200, {"status": "ok", "service": "kecyai-lerobot-runtime"})
-
-        elif path == "/capabilities":
-            base = Path("/lerobot")
-            caps = []
-            if (Path("/app/upstream/lerobot/src/lerobot/scripts/lerobot_teleoperate.py")).exists() or \
-               (Path("/lerobot/lerobot/scripts/lerobot_teleoperate.py")).exists() or \
-               (Path("/lerobot/src/lerobot/scripts/lerobot_teleoperate.py")).exists():
-                caps.append({
-                    "id": "teleop",
-                    "title": "Teleoperation",
-                    "route": "/kecy/platform/teleop",
-                    "runnable": True,
-                    "source_links": ["src/lerobot/scripts/lerobot_teleoperate.py"],
-                })
-            self._respond(200, {"capabilities": caps})
-
-        elif path == "/version":
-            try:
-                import lerobot
-                version = getattr(lerobot, "__version__", "unknown")
-            except ImportError:
-                version = "not installed"
-
-            git_sha = "unknown"
-            try:
-                git_sha = subprocess.check_output(
-                    ["git", "rev-parse", "HEAD"], cwd="/lerobot", text=True
-                ).strip()
-            except Exception:
-                pass
-
-            self._respond(200, {
-                "lerobot_version": version,
-                "git_sha": git_sha,
-                "backend": "kecyai-runtime",
-                "python": sys.version.split()[0],
-            })
-
-        elif path == "/teleop/status":
-            try:
-                self._respond(200, get_manager().get_status())
-            except Exception as e:
-                self._respond(503, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Manager unavailable: {str(e)}",
-                })
-
-        elif path == "/teleop/logs":
-            try:
-                try:
-                    tail = int(query.get("tail", [200])[0])
-                except ValueError:
-                    tail = 200
-                logs = get_manager().get_logs(tail)
-                self._respond(200, {"logs": logs})
-            except Exception as e:
-                self._respond(503, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Manager unavailable: {str(e)}",
-                })
-
-        elif path == "/teleop/joints":
-            try:
-                joints = get_manager().get_joint_state()
-                self._respond(200, {"joints": joints})
-            except Exception as e:
-                self._respond(503, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Manager unavailable: {str(e)}",
-                })
-
-        elif path == "/teleop/telemetry/stream":
-            self._handle_telemetry_stream()
-
-        # ─── Admin / Config (GET) ───
-
-        elif path == "/admin/ports/scan":
-            try:
-                self._respond(200, self._scan_motorbus_ports())
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to scan ports: {str(e)}",
-                })
-
-        elif path == "/admin/config":
-            try:
-                self._respond(200, get_hardware_config().get())
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to read config: {str(e)}",
-                })
-
-        # ─── Calibration (GET) ───
-
-        elif path == "/admin/motors/setup/status":
-            try:
-                self._respond(200, get_motor_setup_manager().get_status())
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to read motor setup status: {str(e)}",
-                })
-
-        elif path == "/admin/motors/setup/logs":
-            try:
-                since = query.get("since", [None])[0]
-                tail = query.get("tail", [200])[0]
-
-                since_val = None
-                if since is not None and str(since).strip() != "":
-                    since_val = int(since)
-                tail_val = int(tail) if tail is not None else 200
-
-                self._respond(200, get_motor_setup_manager().get_logs(since=since_val, tail=tail_val))
-            except ValueError:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": "Query params 'since' and 'tail' must be integers.",
-                })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to read motor setup logs: {str(e)}",
-                })
-
-        elif path == "/calibration/status":
-            try:
-                self._respond(200, get_calibration_manager().get_status())
-            except Exception as e:
-                self._respond(503, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"CalibrationManager unavailable: {str(e)}",
-                    "details": [],
-                })
-
-        # ─── Admin / Preflight (GET) ───
-
-        elif path == "/admin/preflight":
-            try:
-                config = {}
-                try:
-                    config["robot_type"] = query.get("robot_type", ["so101_follower"])[0]
-                except:
-                    pass
-                result = get_preflight_manager().run_checks(config if config else None)
-                self._respond(200, result)
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        # ─── Admin / Calibration (GET) ───
-
-        elif path == "/admin/calibration/list":
-            try:
-                artifacts = get_calibration_admin().list_artifacts()
-                self._respond(200, {"artifacts": artifacts})
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/admin/calibration/latest":
-            try:
-                rtype = query.get("robot_type", ["so101_follower"])[0]
-                artifact = get_calibration_admin().get_latest_artifact(rtype)
-                if artifact:
-                    self._respond(200, artifact)
-                else:
-                    self._respond(404, {
-                        "code": "NOT_FOUND",
-                        "message": "No artifacts found for this robot type",
-                    })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/admin/calibration/selected":
-            try:
-                selected = get_calibration_admin().get_selected_artifact()
-                if selected:
-                    self._respond(200, selected)
-                else:
-                    self._respond(404, {
-                        "code": "NOT_FOUND",
-                        "message": "No calibration artifact selected",
-                    })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        # ─── Recording (GET) ───
-
-        elif path == "/recording/status":
-            try:
-                self._respond(200, get_recording_manager().get_status())
-            except Exception as e:
-                self._respond(503, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"RecordingManager unavailable: {str(e)}",
-                })
-
-        elif path == "/recording/datasets":
-            try:
-                datasets = get_recording_manager().list_datasets()
-                self._respond(200, {"datasets": datasets})
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        # ─── Training (GET) ───
-
-        elif path == "/train/status":
-            try:
-                self._respond(200, get_training_manager().get_status())
-            except Exception as e:
-                self._respond(503, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"TrainingManager unavailable: {str(e)}",
-                })
-
-        elif path == "/train/artifacts":
-            try:
-                artifacts = get_training_manager().list_artifacts()
-                self._respond(200, {"artifacts": artifacts})
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/train/logs/stream":
-            self._handle_training_log_stream()
-
-        else:
-            self._respond(404, {
-                "code": "NOT_FOUND",
-                "message": f"Unknown endpoint: {path}",
-            })
-
-    def do_POST(self) -> None:
-        path = urllib.parse.urlparse(self.path).path
-
-        if path == "/teleop/start":
-            try:
-                # Conflict guard: calibration must not be running
-                try:
-                    if get_calibration_manager().is_running():
-                        self._respond(409, {
-                            "code": "CONFLICT",
-                            "message": "Calibration session is active. Stop calibration before starting teleop.",
-                            "details": [],
-                        })
-                        return
-                except Exception:
-                    pass  # CalibrationManager not init'd yet → no conflict
-
-                # Live-mode guard: require calibration artifact when NOT in dry-run
-                try:
-                    hw = get_hardware_config().get()
-                    if not hw.get("dry_run", True):
-                        selected = get_calibration_admin().get_selected_artifact()
-                        if not selected:
-                            self._respond(412, {
-                                "code": "PRECONDITION_FAILED",
-                                "message": "No calibration artifact selected. Run calibration and select an artifact before starting teleop in hardware mode.",
-                                "details": ["POST /admin/calibration/select with {\"artifactId\":\"...\"}"],
-                            })
-                            return
-                except Exception:
-                    pass  # HardwareConfig/CalibrationAdmin not init'd → skip guard (dry-run)
-
-                data = self._read_body()
-                result = get_manager().start(data)
-                self._respond(200, result)
-            except ValueError as e:
-                # Validation errors: missing fields, invalid types, bad JSON
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                    "details": [],
-                })
-            except Exception as e:
-                # Identify ConflictError by class name to avoid import-order
-                # issues. ConflictError lives in teleop.TeleopManager and is
-                # guaranteed to be loaded because get_manager() was already called.
-                exc_name = type(e).__name__
-                if exc_name == "ConflictError":
-                    self._respond(409, {
-                        "code": "CONFLICT",
-                        "message": str(e),
-                        "currentStatus": getattr(e, "current_status", {}),
-                    })
-                elif isinstance(e, RuntimeError):
-                    self._respond(500, {
-                        "code": "RUNTIME_ERROR",
-                        "message": str(e),
-                    })
-                else:
-                    self._respond(500, {
-                        "code": "INTERNAL_ERROR",
-                        "message": f"Internal error: {str(e)}",
-                    })
-
-        elif path == "/teleop/stop":
-            try:
-                result = get_manager().stop()
-                self._respond(200, result)
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to stop: {str(e)}",
-                })
-
-        elif path == "/teleop/joints/set":
-            try:
-                data = self._read_body()
-                joint_id = data.get("jointId")
-                value = data.get("value")
-                if joint_id is None or value is None:
-                    self._respond(400, {
-                        "code": "VALIDATION_ERROR",
-                        "message": "Missing required fields: 'jointId' and 'value'",
-                    })
-                    return
-                get_manager().set_joint(joint_id, float(value))
-                self._respond(200, {"status": "ok"})
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                })
-            except RuntimeError as e:
-                self._respond(409, {
-                    "code": "PRECONDITION_FAILED",
-                    "message": str(e),
-                })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to set joint: {str(e)}",
-                })
-
-        elif path == "/teleop/command":
-            try:
-                data = self._read_body()
-
-                # Validate required 'joints' field
-                if "joints" not in data:
-                    self._respond(400, {
-                        "code": "VALIDATION_ERROR",
-                        "message": "Missing required field: 'joints'",
-                        "details": [
-                            "Expected: {\"mode\":\"manual\",\"joints\":[{\"id\":\"shoulder_pan\",\"position\":0.2}, ...]}"
-                        ],
-                    })
-                    return
-
-                joints_list = data.get("joints")
-                if not isinstance(joints_list, list):
-                    self._respond(400, {
-                        "code": "VALIDATION_ERROR",
-                        "message": "'joints' must be a JSON array",
-                        "details": [f"Got type: {type(joints_list).__name__}"],
-                    })
-                    return
-
-                result = get_manager().send_command(joints_list)
-                self._respond(200, result)
-
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                    "details": [],
-                })
-            except RuntimeError as e:
-                self._respond(409, {
-                    "code": "PRECONDITION_FAILED",
-                    "message": str(e),
-                })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "INTERNAL_ERROR",
-                    "message": f"Failed to send command: {str(e)}",
-                })
-
-        elif path == "/teleop/pose/home":
-            try:
-                self._respond(200, get_manager().home_pose())
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/teleop/pose/ready":
-            try:
-                self._respond(200, get_manager().ready_pose())
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/teleop/gripper/open":
-            try:
-                self._respond(200, get_manager().gripper_open())
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/teleop/gripper/close":
-            try:
-                self._respond(200, get_manager().gripper_close())
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/teleop/estop/on":
-            try:
-                result = get_manager().estop_on()
-                self._respond(200, result)
-            except RuntimeError as e:
-                self._respond(409, {
-                    "code": "PRECONDITION_FAILED",
-                    "message": str(e),
-                })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/teleop/estop/off":
-            try:
-                result = get_manager().estop_off()
-                self._respond(200, result)
-            except RuntimeError as e:
-                self._respond(409, {
-                    "code": "PRECONDITION_FAILED",
-                    "message": str(e),
-                })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        # ─── Torque ───
-
-        elif path == "/teleop/torque/read":
-            try:
-                mgr = get_manager()
-                torque_data = mgr.read_torque() if hasattr(mgr, 'read_torque') else {"current_torque": []}
-                self._respond(200, torque_data)
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        elif path == "/teleop/torque/toggle":
-            try:
-                data = self._read_body()
-                torque_status = data.get("torque_status")
-                if torque_status is None:
-                    self._respond(400, {
-                        "code": "VALIDATION_ERROR",
-                        "message": "Missing required field: 'torque_status' (boolean)",
-                    })
-                    return
-                mgr = get_manager()
-                if hasattr(mgr, 'toggle_torque'):
-                    result = mgr.toggle_torque(bool(torque_status))
-                else:
-                    result = {"status": "ok", "torque_status": bool(torque_status), "message": "Torque toggle not available in dry-run mode"}
-                self._respond(200, result)
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        # ─── Admin / Preflight (POST) ───
-
-        elif path == "/admin/calibration/select":
-            try:
-                data = self._read_body()
-                if "artifactId" not in data:
-                    self._respond(400, {
-                        "code": "VALIDATION_ERROR",
-                        "message": "Missing 'artifactId'",
-                    })
-                    return
-                
-                result = get_calibration_admin().select_artifact(data["artifactId"])
-                self._respond(200, result)
-            except FileNotFoundError:
-                self._respond(404, {
-                    "code": "NOT_FOUND",
-                    "message": "Artifact not found",
-                })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": str(e),
-                })
-
-        # ─── Admin / Config (POST) ───
-
-        elif path == "/admin/config":
-            try:
-                data = self._read_body()
-                if not data:
-                    self._respond(400, {
-                        "code": "VALIDATION_ERROR",
-                        "message": "Request body is required. Expected: {\"serial_port\":\"...\", \"robot_type\":\"...\", \"driver\":\"...\", \"dry_run\":true/false}",
-                    })
-                    return
-                result = get_hardware_config().update(data)
-                self._respond(200, result)
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to update config: {str(e)}",
-                })
-
-        # ─── Admin / Preflight (POST kept for legacy, but GET is primary) ───
-
-        elif path == "/admin/motors/setup/start":
-            try:
-                data = self._read_body()
-
-                try:
-                    if get_calibration_manager().is_running():
-                        self._respond(409, {
-                            "code": "CONFLICT",
-                            "message": "Calibration session is active. Stop calibration before motor setup.",
-                            "details": [],
-                        })
-                        return
-                except Exception:
-                    pass
-
-                try:
-                    teleop_status = get_manager().get_status()
-                    if teleop_status.get("state") in ("running", "starting"):
-                        self._respond(409, {
-                            "code": "CONFLICT",
-                            "message": "Teleop session is active. Stop teleop before motor setup.",
-                            "details": [],
-                            "currentStatus": teleop_status,
-                        })
-                        return
-                except Exception:
-                    pass
-
-                result = get_motor_setup_manager().start(data)
-                self._respond(200, result)
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                    "details": [],
-                })
-            except Exception as e:
-                if type(e).__name__ == "ConflictError":
-                    self._respond(409, {
-                        "code": "CONFLICT",
-                        "message": str(e),
-                        "currentStatus": getattr(e, "current_status", {}),
-                    })
-                else:
-                    self._respond(500, {
-                        "code": "RUNTIME_ERROR",
-                        "message": str(e),
-                    })
-
-        elif path == "/admin/motors/setup/enter":
-            try:
-                data = self._read_body()
-                times = int(data.get("times", 1))
-                result = get_motor_setup_manager().send_enter(times=times)
-                self._respond(200, result)
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                    "details": [],
-                })
-            except RuntimeError as e:
-                self._respond(409, {
-                    "code": "PRECONDITION_FAILED",
-                    "message": str(e),
-                    "details": [],
-                })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to send Enter: {str(e)}",
-                    "details": [],
-                })
-
-        elif path == "/admin/motors/setup/stop":
-            try:
-                result = get_motor_setup_manager().stop()
-                self._respond(200, result)
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to stop motor setup: {str(e)}",
-                    "details": [],
-                })
-
-        elif path == "/admin/preflight":
-            try:
-                # POST to preflight allows passing explicit config overrides
-                data = self._read_body()
-                result = get_preflight_manager().run_checks(data if data else None)
-                self._respond(200, result)
-            except Exception as e:
-                self._respond(500, {
-                     "code": "RUNTIME_ERROR",
-                     "message": str(e),
-                })
-
-
-
-        # ─── Calibration (POST) ───
-
-        elif path == "/calibration/start":
-            try:
-                data = self._read_body()
-                # Check teleop conflict
-                teleop_running = False
-                try:
-                    teleop_running = get_manager().adapter.is_connected()
-                except Exception:
-                    pass
-
-                result = get_calibration_manager().start(data, teleop_running=teleop_running)
-                self._respond(200, result)
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                    "details": [],
-                })
-            except Exception as e:
-                exc_name = type(e).__name__
-                if exc_name == "CalibrationConflictError":
-                    self._respond(409, {
-                        "code": "CONFLICT",
-                        "message": str(e),
-                        "details": [],
-                    })
-                elif isinstance(e, RuntimeError):
-                    self._respond(500, {
-                        "code": "RUNTIME_ERROR",
-                        "message": str(e),
-                        "details": [],
-                    })
-                else:
-                    self._respond(500, {
-                        "code": "INTERNAL_ERROR",
-                        "message": f"Internal error: {str(e)}",
-                        "details": [],
-                    })
-
-        elif path == "/calibration/step":
-            try:
-                data = self._read_body()
-                # Check E-STOP
-                estop_active = False
-                try:
-                    estop_active = get_manager().adapter.is_estop_active()
-                except Exception:
-                    pass
-
-                result = get_calibration_manager().step(data, estop_active=estop_active)
-                self._respond(200, result)
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                    "details": [],
-                })
-            except RuntimeError as e:
-                msg = str(e)
-                if "E-STOP" in msg:
-                    self._respond(409, {
-                        "code": "PRECONDITION_FAILED",
-                        "message": msg,
-                        "details": [],
-                    })
-                else:
-                    self._respond(409, {
-                        "code": "PRECONDITION_FAILED",
-                        "message": msg,
-                        "details": [],
-                    })
-            except Exception as e:
-                self._respond(500, {
-                    "code": "INTERNAL_ERROR",
-                    "message": f"Calibration step failed: {str(e)}",
-                    "details": [],
-                })
-
-        elif path == "/calibration/stop":
-            try:
-                result = get_calibration_manager().stop()
-                self._respond(200, result)
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to stop calibration: {str(e)}",
-                    "details": [],
-                })
-
-        # ─── Recording (POST) ───
-
-        elif path == "/recording/start":
-            try:
-                # Conflict: calibration must not be active
-                try:
-                    cs = get_calibration_manager().get_status()
-                    if cs.get("state") not in (None, "idle", "completed"):
-                        self._respond(409, {
-                            "code": "CONFLICT",
-                            "message": "Calibration session is active. Stop calibration before starting recording.",
-                            "details": [],
-                            "currentStatus": cs,
-                        })
-                        return
-                except Exception:
-                    pass
-
-                # Conflict: teleop blocks recording unless allow_teleop flag
-                data_peek = self._read_body()
-                allow_teleop = data_peek.get("allow_teleop", False)
-                if not allow_teleop:
-                    try:
-                        ts = get_manager().get_status()
-                        if ts.get("status") == "running":
-                            self._respond(409, {
-                                "code": "CONFLICT",
-                                "message": "Teleop is active. Stop teleop or set allow_teleop=true to record during teleop.",
-                                "details": [],
-                                "currentStatus": ts,
-                            })
-                            return
-                    except Exception:
-                        pass
-
-                # Conflict: training must not be active
-                try:
-                    ts = get_training_manager().get_status()
-                    if ts.get("state") == "training":
-                        self._respond(409, {
-                            "code": "CONFLICT",
-                            "message": "Training job is active. Stop training before starting recording.",
-                            "details": [],
-                            "currentStatus": ts,
-                        })
-                        return
-                except Exception:
-                    pass
-
-                result = get_recording_manager().start(data_peek)
-                self._respond(200, result)
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                    "details": [],
-                })
-            except Exception as e:
-                exc_name = type(e).__name__
-                if exc_name == "ConflictError":
-                    self._respond(409, {
-                        "code": "CONFLICT",
-                        "message": str(e),
-                        "currentStatus": getattr(e, "current_status", {}),
-                    })
-                else:
-                    self._respond(500, {
-                        "code": "RUNTIME_ERROR",
-                        "message": str(e),
-                        "details": [],
-                    })
-
-        elif path == "/recording/stop":
-            try:
-                data = self._read_body()
-                save = data.get("save", True) if data else True
-                result = get_recording_manager().stop(save=save)
-                self._respond(200, result)
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to stop recording: {str(e)}",
-                    "details": [],
-                })
-
-        elif path == "/recording/replay":
-            try:
-                data = self._read_body()
-                episode_index = data.get("episode_index", -1) if data else -1
-                result = get_recording_manager().replay(episode_index=episode_index)
-                self._respond(200, result)
-            except Exception as e:
-                exc_name = type(e).__name__
-                if exc_name == "ConflictError":
-                    self._respond(409, {
-                        "code": "CONFLICT",
-                        "message": str(e),
-                        "currentStatus": getattr(e, "current_status", {}),
-                    })
-                else:
-                    self._respond(500, {
-                        "code": "RUNTIME_ERROR",
-                        "message": f"Failed to replay recording: {str(e)}",
-                        "details": [],
-                    })
-
-        # ─── Training (POST) ───
-
-        elif path == "/train/start":
-            try:
-                # Conflict: calibration must not be active
-                try:
-                    cs = get_calibration_manager().get_status()
-                    if cs.get("state") not in (None, "idle", "completed"):
-                        self._respond(409, {
-                            "code": "CONFLICT",
-                            "message": "Calibration session is active. Stop calibration before starting training.",
-                            "details": [],
-                            "currentStatus": cs,
-                        })
-                        return
-                except Exception:
-                    pass
-
-                # Conflict: recording must not be active
-                try:
-                    rs = get_recording_manager().get_status()
-                    if rs.get("state") == "recording":
-                        self._respond(409, {
-                            "code": "CONFLICT",
-                            "message": "Recording session is active. Stop recording before starting training.",
-                            "details": [],
-                            "currentStatus": rs,
-                        })
-                        return
-                except Exception:
-                    pass
-
-                data = self._read_body()
-                result = get_training_manager().start(data)
-                self._respond(200, result)
-            except ValueError as e:
-                self._respond(400, {
-                    "code": "VALIDATION_ERROR",
-                    "message": str(e),
-                    "details": [],
-                })
-            except Exception as e:
-                exc_name = type(e).__name__
-                if exc_name == "ConflictError":
-                    self._respond(409, {
-                        "code": "CONFLICT",
-                        "message": str(e),
-                        "currentStatus": getattr(e, "current_status", {}),
-                    })
-                else:
-                    self._respond(500, {
-                        "code": "RUNTIME_ERROR",
-                        "message": str(e),
-                        "details": [],
-                    })
-
-        elif path == "/train/stop":
-            try:
-                result = get_training_manager().stop()
-                self._respond(200, result)
-            except Exception as e:
-                self._respond(500, {
-                    "code": "RUNTIME_ERROR",
-                    "message": f"Failed to stop training: {str(e)}",
-                    "details": [],
-                })
-
-        else:
-            self._respond(404, {
-                "code": "NOT_FOUND",
-                "message": f"Unknown endpoint: {path}",
-            })
-
-    def do_OPTIONS(self) -> None:
-        self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
-
-    # ───────── SSE Telemetry Stream ─────────
-
-    def _handle_telemetry_stream(self):
-        """
-        Server-Sent Events endpoint.
-        Streams JSON telemetry at ~10Hz while the connection is alive.
-        """
-        try:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-        except Exception:
-            return
-
-        try:
-            while True:
-                try:
-                    telemetry = get_manager().get_telemetry()
-                except Exception:
-                    telemetry = {"status": "error", "error": "Manager unavailable"}
-                
-                data_line = json.dumps(telemetry)
-                self.wfile.write(f"data: {data_line}\n\n".encode())
-                self.wfile.flush()
-                time.sleep(0.1)  # ~10Hz
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            pass
-
-    # ───────── SSE Training Log Stream ─────────
-
-    def _handle_training_log_stream(self):
-        """
-        Server-Sent Events endpoint for training log lines.
-        Streams new log lines at ~2Hz while training is active.
-        """
-        try:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-        except Exception:
-            return
-
-        cursor = 0
-        try:
-            while True:
-                try:
-                    log_data = get_training_manager().get_logs(since_cursor=cursor)
-                    cursor = log_data.get("cursor", cursor)
-                    state = log_data.get("state", "idle")
-                except Exception:
-                    log_data = {"logs": [], "cursor": cursor, "state": "error"}
-                    state = "error"
-
-                data_line = json.dumps(log_data)
-                self.wfile.write(f"data: {data_line}\n\n".encode())
-                self.wfile.flush()
-
-                # Stop streaming if training is done
-                if state in ("completed", "stopped", "failed", "idle"):
-                    # Send one final event, then close
-                    time.sleep(0.5)
-                    final = json.dumps({"logs": [], "cursor": cursor, "state": state, "done": True})
-                    self.wfile.write(f"data: {final}\n\n".encode())
-                    self.wfile.flush()
-                    break
-
-                time.sleep(0.5)  # ~2Hz
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            pass
-
-    def log_message(self, format, *args):
-        pass
-
-
-def main() -> None:
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), RuntimeHandler)
-    print(f"KECY LeRobot Runtime listening on :{PORT}")
+            values.append(int(token))
+        except ValueError:
+            continue
+    return values or None
+
+
+def _is_conflict_message(message: str) -> bool:
+    lowered = message.lower()
+    return any(
+        fragment in lowered
+        for fragment in [
+            "session is active",
+            "already running",
+            "already active",
+            "stop current session first",
+            "cannot replay while state",
+            "already running with",
+        ]
+    )
+
+
+def _is_precondition_message(message: str) -> bool:
+    lowered = message.lower()
+    return any(
+        fragment in lowered
+        for fragment in [
+            "e-stop active",
+            "release emergency stop",
+            "must be connected",
+            "must be started",
+            "call /teleop/start first",
+            "web teleop not running",
+            "no calibration session running",
+            "no running motor setup session",
+            "no runtime gamepad detected",
+            "controller index",
+            "teleop session must be connected",
+        ]
+    )
+
+
+def _error_payload(
+    code: str,
+    message: str,
+    *,
+    details: list[Any] | None = None,
+    current_status: Any | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "code": code,
+        "message": message,
+    }
+    if details:
+        payload["details"] = details
+    if current_status is not None:
+        payload["currentStatus"] = current_status
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+def _error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    *,
+    details: list[Any] | None = None,
+    current_status: Any | None = None,
+    extra: dict[str, Any] | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=_error_payload(code, message, details=details, current_status=current_status, extra=extra),
+    )
+
+
+def _translate_exception(exc: Exception) -> JSONResponse:
+    expected = _translate_expected_exception(exc)
+    if expected is not None:
+        return expected
+    if isinstance(exc, RuntimeError):
+        return _error_response(500, "RUNTIME_ERROR", str(exc))
+    return _error_response(500, "INTERNAL_ERROR", str(exc))
+
+
+def _translate_expected_exception(exc: Exception) -> JSONResponse | None:
+    if isinstance(exc, ValueError):
+        return _error_response(400, "VALIDATION_ERROR", str(exc))
+    if isinstance(exc, FileNotFoundError):
+        return _error_response(404, "NOT_FOUND", str(exc))
+    if isinstance(exc, (TeleopConflictError, RecordingConflictError, TrainingConflictError, MotorSetupConflictError)):
+        current_status = getattr(exc, "current_status", None)
+        return _error_response(409, "CONFLICT", str(exc), current_status=current_status)
+    if isinstance(exc, CalibrationConflictError):
+        return _error_response(409, "CONFLICT", str(exc))
+    if isinstance(exc, RuntimeError):
+        message = str(exc)
+        if _is_conflict_message(message):
+            return _error_response(409, "CONFLICT", message)
+        if _is_precondition_message(message):
+            return _error_response(409, "PRECONDITION_FAILED", message)
+    return None
+
+
+async def read_json_body(request: Request, required: bool = False) -> dict[str, Any]:
+    raw = await request.body()
+    if not raw or not raw.strip():
+        if required:
+            raise ValueError("Request body is required.")
+        return {}
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nShutting down.")
-        server.server_close()
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON body: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"Request body must be a JSON object, got {type(parsed).__name__}.")
+    return parsed
+
+
+def _get_git_sha() -> str:
+    checkout_dir = lerobot_checkout_dir()
+    if checkout_dir is None:
+        return "unknown"
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(checkout_dir), text=True).strip()
+    except Exception:
+        return "unknown"
+
+
+def _capabilities_payload() -> dict[str, Any]:
+    caps = []
+    if importlib.util.find_spec("lerobot.scripts.lerobot_teleoperate") is not None:
+        caps.append(
+            {
+                "id": "teleop",
+                "title": "Teleop",
+                "route": "/kecy/platform/teleop",
+                "runnable": True,
+                "source": "kecyai",
+            }
+        )
+    caps.append(
+        {
+            "id": "calibration",
+            "title": "Calibration",
+            "route": "/kecy/platform/kalibrasyon",
+            "runnable": True,
+            "source": "kecyai",
+        }
+    )
+    return {"capabilities": caps}
+
+
+def _version_payload() -> dict[str, Any]:
+    return {
+        "lerobot_version": detect_lerobot_version(),
+        "git_sha": _get_git_sha(),
+        "backend": "kecyai-fastapi",
+        "python": sys.version.split()[0],
+    }
+
+
+class RuntimeServiceContext:
+    def __init__(self) -> None:
+        self.host = DEFAULT_HOST
+        self.port = DEFAULT_PORT
+        self.service_name = DEFAULT_SERVICE_NAME
+        self.service_url = _compute_service_url(self.host, self.port)
+        self.frontend_dist = _detect_frontend_dist()
+        self.frontend_dev_url = DEFAULT_FRONTEND_DEV_URL
+        self._runtime_state: Optional[KecyaiRuntimeState] = None
+
+    def configure(
+        self,
+        *,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        service_name: Optional[str] = None,
+        service_url: Optional[str] = None,
+        frontend_dist: Optional[Path] = None,
+        frontend_dev_url: Optional[str] = None,
+    ) -> None:
+        if host:
+            self.host = host
+        if port is not None:
+            self.port = port
+        if service_name:
+            self.service_name = service_name
+        self.service_url = service_url.rstrip("/") if service_url else _compute_service_url(self.host, self.port)
+        if frontend_dist is not None:
+            self.frontend_dist = frontend_dist
+        if frontend_dev_url:
+            self.frontend_dev_url = frontend_dev_url
+
+    def runtime_state(self) -> KecyaiRuntimeState:
+        if self._runtime_state is None:
+            self._runtime_state = KecyaiRuntimeState(HardwareConfig())
+        return self._runtime_state
+
+    def build_health(self) -> dict[str, Any]:
+        if self._runtime_state is None:
+            return {
+                "status": "ok",
+                "service": self.service_name,
+                "service_url": self.service_url,
+                "runtime_status": "ready",
+                "teleop_state": "idle",
+                "calibration_state": "idle",
+                "mode": HardwareConfig().get().get("mode", "dry_run"),
+            }
+        return self._runtime_state.build_health(self.service_name, self.service_url)
+
+    def build_readiness(self) -> dict[str, Any]:
+        if detect_lerobot_version() == "unavailable":
+            raise RuntimeError("LeRobot package is not importable.")
+        return self.runtime_state().build_health(self.service_name, self.service_url)
+
+    def cleanup(self) -> None:
+        if self._runtime_state is not None:
+            self._runtime_state.cleanup()
+            self._runtime_state = None
+
+
+RUNTIME = RuntimeServiceContext()
+
+
+def configure_runtime_service(
+    *,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    service_name: Optional[str] = None,
+    service_url: Optional[str] = None,
+    frontend_dist: Optional[Path] = None,
+    frontend_dev_url: Optional[str] = None,
+) -> None:
+    RUNTIME.configure(
+        host=host,
+        port=port,
+        service_name=service_name,
+        service_url=service_url,
+        frontend_dist=frontend_dist,
+        frontend_dev_url=frontend_dev_url,
+    )
+
+
+def _motor_setup_running(state: KecyaiRuntimeState) -> bool:
+    try:
+        return bool(state.motor_setup.get_status().get("running", False))
+    except Exception:
+        return False
+
+
+def _guard_teleop_start(state: KecyaiRuntimeState) -> None:
+    if _motor_setup_running(state):
+        raise RuntimeError("Motor setup session is active. Stop motor setup before starting teleop.")
+
+
+def _guard_calibration_start(state: KecyaiRuntimeState) -> None:
+    if _motor_setup_running(state):
+        raise RuntimeError("Motor setup session is active. Stop motor setup before starting calibration.")
+
+
+def _guard_motor_setup_start(state: KecyaiRuntimeState) -> None:
+    if state.calibration.is_running():
+        raise RuntimeError("Calibration session is active. Stop calibration before starting motor setup.")
+    if state.teleop.adapter.is_connected():
+        raise RuntimeError("Teleop session is active. Stop teleop before starting motor setup.")
+
+
+async def _proxy_frontend_response(url: str) -> Response:
+    def _fetch() -> tuple[int, str, bytes]:
+        request = urllib.request.Request(url, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=5.0) as upstream:
+                return upstream.status, upstream.headers.get("Content-Type", "text/html; charset=utf-8"), upstream.read()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.headers.get("Content-Type", "text/plain; charset=utf-8"), exc.read()
+
+    status_code, content_type, body = await asyncio.to_thread(_fetch)
+    return Response(content=body, status_code=status_code, media_type=content_type.split(";", 1)[0], headers={"Content-Type": content_type})
+
+
+async def _serve_frontend(full_path: str, request: Request) -> Response:
+    if full_path.startswith("api/"):
+        return _error_response(404, "NOT_FOUND", f"Unknown endpoint: /{full_path}")
+
+    file_path = full_path.lstrip("/")
+    frontend_dist = RUNTIME.frontend_dist
+    if frontend_dist:
+        asset_candidate = frontend_dist / file_path
+        if file_path and asset_candidate.exists() and asset_candidate.is_file():
+            return FileResponse(asset_candidate)
+
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+
+    frontend_dev_url = (RUNTIME.frontend_dev_url or "").rstrip("/")
+    if frontend_dev_url:
+        target = urllib.parse.urljoin(frontend_dev_url + "/", file_path)
+        query = request.url.query
+        if not file_path:
+            target = frontend_dev_url + "/"
+        if query:
+            separator = "&" if urllib.parse.urlparse(target).query else "?"
+            target = f"{target}{separator}{query}"
+        return await _proxy_frontend_response(target)
+
+    return _error_response(
+        503,
+        "FRONTEND_UNAVAILABLE",
+        "Frontend assets are unavailable. Build frontend/dist or start the Vite dev server.",
+    )
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    RUNTIME.cleanup()
+
+
+app = FastAPI(title="KECYAI Runtime API", version="0.4.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+    return _translate_exception(exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    details = []
+    for error in exc.errors():
+        location = ".".join(str(part) for part in error.get("loc", []))
+        message = error.get("msg", "Invalid request.")
+        details.append(f"{location}: {message}" if location else message)
+    return _error_response(400, "VALIDATION_ERROR", "Request validation failed.", details=details)
+
+
+async def health() -> dict[str, Any]:
+    return RUNTIME.build_health()
+
+
+async def lerobot_health() -> dict[str, Any]:
+    return RUNTIME.build_health()
+
+
+async def readiness() -> Response:
+    try:
+        return JSONResponse(status_code=200, content=RUNTIME.build_readiness())
+    except Exception as exc:
+        return _error_response(503, "RUNTIME_NOT_READY", str(exc))
+
+
+async def capabilities() -> dict[str, Any]:
+    return _capabilities_payload()
+
+
+async def version() -> dict[str, Any]:
+    return _version_payload()
+
+
+async def teleop_status() -> dict[str, Any]:
+    return RUNTIME.runtime_state().teleop_status_payload()
+
+
+async def teleop_start(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    state = RUNTIME.runtime_state()
+    _guard_teleop_start(state)
+    return state.start_teleop(payload)
+
+
+async def teleop_stop() -> dict[str, Any]:
+    return RUNTIME.runtime_state().stop_teleop()
+
+
+async def teleop_logs(tail: int = Query(150, ge=1, le=500)) -> dict[str, Any]:
+    return {"logs": RUNTIME.runtime_state().combined_logs(tail=tail)}
+
+
+async def teleop_joints(
+    unit: str = Query("degrees"),
+    joints_ids: Optional[str] = Query(default=None),
+) -> dict[str, Any]:
+    state = RUNTIME.runtime_state()
+    return state.read_joint_payload(normalize_unit(unit), _parse_int_list(joints_ids))
+
+
+async def teleop_telemetry_stream(request: Request) -> StreamingResponse:
+    state = RUNTIME.runtime_state()
+
+    async def stream():
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                payload = state.telemetry_snapshot()
+                yield f"data: {json.dumps(payload)}\n\n"
+                await asyncio.sleep(0.25)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"
+                await asyncio.sleep(1.0)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+async def teleop_set_joint(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request, required=True)
+    joint_id = str(payload.get("jointId") or "").strip()
+    if not joint_id:
+        raise ValueError("jointId is required.")
+    try:
+        value = float(payload.get("value"))
+    except Exception as exc:
+        raise ValueError("value must be a number.") from exc
+    return RUNTIME.runtime_state().set_joint(joint_id, value)
+
+
+async def teleop_command(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request, required=True)
+    return RUNTIME.runtime_state().write_joint_positions(payload)
+
+
+async def teleop_pose_home() -> dict[str, Any]:
+    return RUNTIME.runtime_state().apply_home_pose()
+
+
+async def teleop_pose_ready() -> dict[str, Any]:
+    return RUNTIME.runtime_state().apply_ready_pose()
+
+
+async def teleop_gripper_open() -> dict[str, Any]:
+    return RUNTIME.runtime_state().set_gripper(True)
+
+
+async def teleop_gripper_close() -> dict[str, Any]:
+    return RUNTIME.runtime_state().set_gripper(False)
+
+
+async def teleop_estop_on() -> dict[str, Any]:
+    state = RUNTIME.runtime_state()
+    result = state.teleop.estop_on()
+    state.append_log("E-STOP engaged.")
+    return result
+
+
+async def teleop_estop_off() -> dict[str, Any]:
+    state = RUNTIME.runtime_state()
+    result = state.teleop.estop_off()
+    state.append_log("E-STOP released.")
+    return result
+
+
+async def teleop_torque_read() -> dict[str, Any]:
+    return RUNTIME.runtime_state().read_torque_payload()
+
+
+async def teleop_torque_toggle(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request, required=True)
+    if "torque_status" not in payload:
+        raise ValueError("torque_status is required.")
+    return RUNTIME.runtime_state().toggle_torque(bool(payload.get("torque_status")))
+
+
+async def gamepad_status() -> dict[str, Any]:
+    return RUNTIME.runtime_state().gamepad_status_payload()
+
+
+async def gamepad_start(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    return RUNTIME.runtime_state().start_gamepad(payload)
+
+
+async def gamepad_stop() -> dict[str, Any]:
+    return RUNTIME.runtime_state().stop_gamepad()
+
+
+async def gamepad_config(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    return RUNTIME.runtime_state().configure_gamepad(payload)
+
+
+async def calibration_status() -> dict[str, Any]:
+    return RUNTIME.runtime_state().calibration.get_status()
+
+
+async def calibration_start(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    state = RUNTIME.runtime_state()
+    _guard_calibration_start(state)
+    return state.start_calibration(payload)
+
+
+async def calibration_step(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    return RUNTIME.runtime_state().step_calibration(payload)
+
+
+async def calibration_stop() -> dict[str, Any]:
+    return RUNTIME.runtime_state().stop_calibration()
+
+
+async def admin_preflight(robot_type: str = Query("so101_follower")) -> dict[str, Any]:
+    return RUNTIME.runtime_state().build_preflight(robot_type)
+
+
+async def admin_get_config() -> dict[str, Any]:
+    return RUNTIME.runtime_state().get_config()
+
+
+async def admin_set_config(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request, required=True)
+    return RUNTIME.runtime_state().update_config(payload)
+
+
+async def admin_ports_scan() -> dict[str, Any]:
+    state = RUNTIME.runtime_state()
+    ports = state.list_ports()
+    return {
+        "status": "ok" if ports else "empty",
+        "ports": ports,
+        "source": "kecyai_scan",
+        "stdout": [],
+        "stderr": [],
+        "exit_code": 0,
+    }
+
+
+async def admin_calibration_list() -> dict[str, Any]:
+    return {"artifacts": RUNTIME.runtime_state().list_calibration_artifacts()}
+
+
+async def admin_calibration_latest(robot_type: str = Query("so101_follower")) -> dict[str, Any]:
+    artifact = RUNTIME.runtime_state().calibration_admin.get_latest_artifact(robot_type)
+    if not artifact:
+        raise FileNotFoundError(f"No calibration artifact for {robot_type}.")
+    return artifact
+
+
+async def admin_calibration_select(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request, required=True)
+    artifact_id = str(payload.get("artifactId") or "").strip()
+    if not artifact_id:
+        raise ValueError("artifactId is required.")
+    return RUNTIME.runtime_state().select_calibration_artifact(artifact_id)
+
+
+async def admin_motor_setup_start(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request, required=True)
+    state = RUNTIME.runtime_state()
+    _guard_motor_setup_start(state)
+    return state.motor_setup.start(payload)
+
+
+async def admin_motor_setup_status() -> dict[str, Any]:
+    return RUNTIME.runtime_state().motor_setup.get_status()
+
+
+async def admin_motor_setup_enter(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    times = int(payload.get("times", 1))
+    return RUNTIME.runtime_state().motor_setup.send_enter(times)
+
+
+async def admin_motor_setup_stop() -> dict[str, Any]:
+    return RUNTIME.runtime_state().motor_setup.stop()
+
+
+async def admin_motor_setup_logs(
+    since: Optional[int] = Query(default=None, ge=0),
+    tail: int = Query(200, ge=1, le=1000),
+) -> dict[str, Any]:
+    return RUNTIME.runtime_state().motor_setup.get_logs(since=since, tail=tail)
+
+
+async def recording_start(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    return RUNTIME.runtime_state().recording.start(payload)
+
+
+async def recording_stop(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    return RUNTIME.runtime_state().recording.stop(bool(payload.get("save", True)))
+
+
+async def recording_replay(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request)
+    episode_index = int(payload.get("episode_index", -1))
+    return RUNTIME.runtime_state().recording.replay(episode_index)
+
+
+async def recording_status() -> dict[str, Any]:
+    return RUNTIME.runtime_state().recording.get_status()
+
+
+async def recording_datasets() -> dict[str, Any]:
+    return {"datasets": RUNTIME.runtime_state().recording.list_datasets()}
+
+
+async def training_start(request: Request) -> dict[str, Any]:
+    payload = await read_json_body(request, required=True)
+    return RUNTIME.runtime_state().training.start(payload)
+
+
+async def training_stop() -> dict[str, Any]:
+    return RUNTIME.runtime_state().training.stop()
+
+
+async def training_status() -> dict[str, Any]:
+    return RUNTIME.runtime_state().training.get_status()
+
+
+async def training_artifacts() -> dict[str, Any]:
+    return {"artifacts": RUNTIME.runtime_state().training.list_artifacts()}
+
+
+async def training_logs_stream(
+    request: Request,
+    since: int = Query(0, ge=0),
+) -> StreamingResponse:
+    training = RUNTIME.runtime_state().training
+
+    async def stream():
+        cursor = since
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                payload = training.get_logs(cursor)
+                cursor = int(payload.get("cursor", cursor))
+                payload["done"] = payload.get("state") in {"completed", "stopped", "failed", "idle"}
+                yield f"data: {json.dumps(payload)}\n\n"
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"
+                await asyncio.sleep(1.0)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+async def frontend_entry(request: Request, full_path: str = "") -> Response:
+    return await _serve_frontend(full_path, request)
+
+
+def _wrap_expected_api_errors(endpoint):
+    @wraps(endpoint)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await endpoint(*args, **kwargs)
+        except Exception as exc:
+            translated = _translate_expected_exception(exc)
+            if translated is not None:
+                return translated
+            raise
+
+    return wrapper
+
+
+def _add_route(paths: list[str], endpoint, methods: list[str]) -> None:
+    wrapped = _wrap_expected_api_errors(endpoint)
+    for path in paths:
+        app.add_api_route(path, wrapped, methods=methods)
+
+
+_add_route(["/health", "/api/health"], health, ["GET"])
+_add_route(["/api/lerobot/health"], lerobot_health, ["GET"])
+_add_route(["/ready", "/api/ready"], readiness, ["GET"])
+_add_route(["/api/lerobot/ready"], readiness, ["GET"])
+_add_route(["/capabilities", "/api/lerobot/capabilities"], capabilities, ["GET"])
+_add_route(["/version", "/api/lerobot/version"], version, ["GET"])
+
+_add_route(["/api/lerobot/teleop/status", "/teleop/status"], teleop_status, ["GET"])
+_add_route(["/api/lerobot/teleop/start", "/teleop/start"], teleop_start, ["POST"])
+_add_route(["/api/lerobot/teleop/stop", "/teleop/stop"], teleop_stop, ["POST"])
+_add_route(["/api/lerobot/teleop/logs", "/teleop/logs"], teleop_logs, ["GET"])
+_add_route(["/api/lerobot/teleop/joints", "/teleop/joints"], teleop_joints, ["GET"])
+_add_route(["/api/lerobot/teleop/telemetry/stream", "/teleop/telemetry/stream"], teleop_telemetry_stream, ["GET"])
+_add_route(["/api/lerobot/teleop/joints/set", "/teleop/joints/set"], teleop_set_joint, ["POST"])
+_add_route(["/api/lerobot/teleop/command", "/teleop/command"], teleop_command, ["POST"])
+_add_route(["/api/lerobot/teleop/pose/home", "/teleop/pose/home"], teleop_pose_home, ["POST"])
+_add_route(["/api/lerobot/teleop/pose/ready", "/teleop/pose/ready"], teleop_pose_ready, ["POST"])
+_add_route(["/api/lerobot/teleop/gripper/open", "/teleop/gripper/open"], teleop_gripper_open, ["POST"])
+_add_route(["/api/lerobot/teleop/gripper/close", "/teleop/gripper/close"], teleop_gripper_close, ["POST"])
+_add_route(["/api/lerobot/teleop/estop/on", "/teleop/estop/on"], teleop_estop_on, ["POST"])
+_add_route(["/api/lerobot/teleop/estop/off", "/teleop/estop/off"], teleop_estop_off, ["POST"])
+_add_route(["/api/lerobot/teleop/torque/read", "/teleop/torque/read"], teleop_torque_read, ["POST"])
+_add_route(["/api/lerobot/teleop/torque/toggle", "/teleop/torque/toggle"], teleop_torque_toggle, ["POST"])
+
+_add_route(["/api/lerobot/gamepad/status", "/gamepad/status"], gamepad_status, ["GET"])
+_add_route(["/api/lerobot/gamepad/start", "/gamepad/start"], gamepad_start, ["POST"])
+_add_route(["/api/lerobot/gamepad/stop", "/gamepad/stop"], gamepad_stop, ["POST"])
+_add_route(["/api/lerobot/gamepad/config", "/gamepad/config"], gamepad_config, ["POST"])
+
+_add_route(["/api/lerobot/calibration/status", "/calibration/status"], calibration_status, ["GET"])
+_add_route(["/api/lerobot/calibration/start", "/calibration/start"], calibration_start, ["POST"])
+_add_route(["/api/lerobot/calibration/step", "/calibration/step"], calibration_step, ["POST"])
+_add_route(["/api/lerobot/calibration/stop", "/calibration/stop"], calibration_stop, ["POST"])
+
+_add_route(["/api/lerobot/admin/preflight", "/admin/preflight"], admin_preflight, ["GET"])
+_add_route(["/api/lerobot/admin/config", "/admin/config"], admin_get_config, ["GET"])
+_add_route(["/api/lerobot/admin/config", "/admin/config"], admin_set_config, ["POST"])
+_add_route(["/api/lerobot/admin/ports/scan", "/admin/ports/scan"], admin_ports_scan, ["GET"])
+_add_route(["/api/lerobot/admin/calibration/list", "/admin/calibration/list"], admin_calibration_list, ["GET"])
+_add_route(["/api/lerobot/admin/calibration/latest", "/admin/calibration/latest"], admin_calibration_latest, ["GET"])
+_add_route(["/api/lerobot/admin/calibration/select", "/admin/calibration/select"], admin_calibration_select, ["POST"])
+_add_route(["/api/lerobot/admin/motors/setup/start", "/admin/motors/setup/start"], admin_motor_setup_start, ["POST"])
+_add_route(["/api/lerobot/admin/motors/setup/status", "/admin/motors/setup/status"], admin_motor_setup_status, ["GET"])
+_add_route(["/api/lerobot/admin/motors/setup/enter", "/admin/motors/setup/enter"], admin_motor_setup_enter, ["POST"])
+_add_route(["/api/lerobot/admin/motors/setup/stop", "/admin/motors/setup/stop"], admin_motor_setup_stop, ["POST"])
+_add_route(["/api/lerobot/admin/motors/setup/logs", "/admin/motors/setup/logs"], admin_motor_setup_logs, ["GET"])
+
+_add_route(["/api/lerobot/recording/start", "/recording/start"], recording_start, ["POST"])
+_add_route(["/api/lerobot/recording/stop", "/recording/stop"], recording_stop, ["POST"])
+_add_route(["/api/lerobot/recording/replay", "/recording/replay"], recording_replay, ["POST"])
+_add_route(["/api/lerobot/recording/status", "/recording/status"], recording_status, ["GET"])
+_add_route(["/api/lerobot/recording/datasets", "/recording/datasets"], recording_datasets, ["GET"])
+
+_add_route(["/api/lerobot/train/start", "/train/start"], training_start, ["POST"])
+_add_route(["/api/lerobot/train/stop", "/train/stop"], training_stop, ["POST"])
+_add_route(["/api/lerobot/train/status", "/train/status"], training_status, ["GET"])
+_add_route(["/api/lerobot/train/artifacts", "/train/artifacts"], training_artifacts, ["GET"])
+_add_route(["/api/lerobot/train/logs/stream", "/train/logs/stream"], training_logs_stream, ["GET"])
+
+app.add_api_route("/", frontend_entry, methods=["GET"])
+app.add_api_route("/{full_path:path}", frontend_entry, methods=["GET"])
 
 
 def bootstrap_check() -> None:
-    """
-    Deterministic startup check.
-    Ensures LeRobot is importable and prints environmental info.
-    Exit 1 if critical dependencies are missing.
-    """
-    print("-" * 60)
-    print("KECY RUNTIME BOOTSTRAP")
-    print("-" * 60)
-    print(f"Python: {sys.version}")
-    print(f"Platform: {sys.platform}")
-    print("-" * 60)
-    
-    # 1. Print sys.path to debug import resolution
-    print("sys.path:")
-    for p in sys.path:
-        print(f"  - {p}")
-    print("-" * 60)
-
-    # 2. Try importing lerobot
+    print(f"KECYAI runtime booting with Python {sys.version.split()[0]}")
+    print(f"Service target: {RUNTIME.host}:{RUNTIME.port}")
+    print(f"Frontend dist: {RUNTIME.frontend_dist or 'none'}")
     try:
-        import lerobot
-        print(f"SUCCESS: 'lerobot' module found.")
-        print(f"File: {lerobot.__file__}")
-        print(f"Version: {getattr(lerobot, '__version__', 'unknown')}")
-        
-    except ImportError as e:
-        print("CRITICAL ERROR: Could not import 'lerobot'.")
-        print(f"Reason: {e}")
-        # Don't exit here, allows server to start and report error via API
-        print("WARNING: Server will start but Teleop features may fail.")
+        import lerobot  # type: ignore
 
-    print("-" * 60)
-    print("Bootstrap: OK")
-    print("-" * 60)
+        print(f"LeRobot import ok ({getattr(lerobot, '__version__', 'unknown')})")
+    except Exception as exc:
+        print(f"LeRobot import warning: {exc}")
+
+
+def run_uvicorn(*, host: Optional[str] = None, port: Optional[int] = None) -> None:
+    effective_host = host or RUNTIME.host
+    effective_port = port if port is not None else RUNTIME.port
+    uvicorn.run(app, host=effective_host, port=effective_port, log_level="info")
+
+
+def main() -> None:
+    bootstrap_check()
+    run_uvicorn()
 
 
 if __name__ == "__main__":
-    bootstrap_check()
     main()

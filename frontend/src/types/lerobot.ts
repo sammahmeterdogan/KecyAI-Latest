@@ -92,8 +92,10 @@ export interface TeleopJointSetRequest {
 
 export interface JointState {
     id: string;
+    servo_id?: number;
     name: string;
     position: number;
+    temperature?: number | null;
     min: number;
     max: number;
 }
@@ -119,7 +121,8 @@ export interface TeleopTelemetryEvent {
     latency_ms: number;
     dry_run: boolean;
     connected: boolean;
-    joints: Array<{ id: string; position: number }>;
+    temperature?: number | null;
+    joints: Array<{ id: string; servo_id?: number; position: number; temperature?: number | null }>;
 }
 
 // ─── Calibration Types ───
@@ -138,14 +141,24 @@ export interface CalibrationStatus {
     state: 'idle' | 'running' | 'completed' | 'stopped' | 'offline';
     dry_run: boolean;
     robot_type: string;
+    serial_port?: string;
     current_step_index: number;
     total_steps: number;
     steps: CalibrationStepDef[];
     current_step?: CalibrationStepDef;
     artifact_path?: string;
+    lerobot_calibration_path?: string;
     error?: string;
     elapsed_seconds?: number;
     message?: string;
+    live_joint_positions?: Record<string, number>;
+    live_torque?: Record<string, number>;
+    live_range?: {
+        joint: string;
+        measured_min: number;
+        measured_max: number;
+        current_position: number;
+    };
 }
 
 export interface CalibrationStartRequest {

@@ -45,7 +45,7 @@ RUN uv pip install --no-cache ".[so101,feetech]" || \
     uv pip install --no-cache ".[feetech]" || \
     uv pip install --no-cache .
     
-RUN uv pip install --no-cache pyserial
+RUN uv pip install --no-cache pyserial fastapi "uvicorn[standard]"
 
 # ── KECY runtime API server ──
 COPY --chown=kecyai:kecyai app/ /kecyai-app/
@@ -53,9 +53,9 @@ COPY --chown=kecyai:kecyai app/ /kecyai-app/
 # Ensure server.py can import teleop package from /kecyai-app/
 ENV PYTHONPATH="/kecyai-app:${PYTHONPATH}"
 
-EXPOSE 8100
+EXPOSE 8040
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8100/health || exit 1
+  CMD curl -f http://localhost:8040/api/ready || exit 1
 
 CMD ["python", "/kecyai-app/server.py"]

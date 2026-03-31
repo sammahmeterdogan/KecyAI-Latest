@@ -14,28 +14,27 @@ Station: Phase 11 baseline is implemented (Hardware Onboarding + Live-Ready swit
 |---|---|---|---|
 | S1 Infrastructure | Docker Compose stack, start/stop scripts | IN PROGRESS | Compose files and scripts exist; local host virtualization and Docker access can still block startup on some machines. |
 | S2 Runtime | Python runtime with teleop + calibration + admin endpoints | DONE | Runtime server routes for health, teleop, calibration, recording/training hooks are present. |
-| S3 Backend Gateway | Spring Boot API, structured errors, runtime orchestration | DONE | Controllers and runtime client/orchestrator are implemented. |
+| S3 Direct Runtime API | Python FastAPI transport, structured errors, direct frontend routing | DONE | Java proxy layer has been removed from the primary path. |
 | S4 Frontend Platform | React/Vite platform routes and teleop pages | IN PROGRESS | Platform pages exist; integration hardening and UX consistency continue. |
 | S5 Hardware Mode | Linux/WSL2 hardware overlay, serial/video passthrough | IN PROGRESS | Compose hardware overlay and config paths exist; requires real device validation flow. |
 | S6 Operations | Health checks, startup runbooks, troubleshooting docs | IN PROGRESS | Good docs exist, but some docs are inconsistent/outdated and need consolidation. |
-| S7 QA and Release | Automated tests, CI checks, release checklist | WILL GO | No full E2E gate yet; backend tests exist but broader quality gate is pending. |
+| S7 QA and Release | Automated tests, CI checks, release checklist | WILL GO | No full E2E gate yet; broader runtime and desktop quality gates are still pending. |
 
 ## DONE (Completed Foundations)
 
-1. Dockerized 3-service architecture is defined (`runtime`, `backend`, `frontend`).
+1. Runtime service owns the API directly on port `8040`.
 2. Runtime health and teleop/calibration/admin API surface exists.
-3. Backend gateway includes structured error handling and runtime orchestration path.
-4. Frontend platform routing and API integration scaffolding exist.
-5. Windows helper scripts for start/stop and Cloudflare demo are available.
-6. Hardware and autostart compose overlays are already prepared.
-7. Upstream LeRobot dependency is pinned and vendored with documented sync metadata.
+3. Frontend platform routing and API integration scaffolding exist.
+4. Windows helper scripts for start/stop and Cloudflare demo are available.
+5. Hardware compose overlay is prepared.
+6. Upstream LeRobot dependency is pinned and vendored with documented sync metadata.
 
 ## IN PROGRESS (Current Workstream)
 
 1. Environment stability (Docker Desktop/WSL/virtualization differences across developer machines).
 2. End-to-end validation for both dry-run mode and real hardware mode.
 3. Documentation cleanup to align actual code state vs older "skeleton" notes.
-4. UI and backend behavior hardening for conflict paths and recovery flows.
+4. UI and runtime behavior hardening for conflict paths and recovery flows.
 
 ## WILL GO (Big Roadmap)
 
@@ -47,7 +46,7 @@ Station: Phase 11 baseline is implemented (Hardware Onboarding + Live-Ready swit
 4. Add startup troubleshooting decision tree and log-first workflow.
 
 Roadmap A progress (2026-02-21):
-- DONE: Canonical startup path implemented in `scripts/start.ps1` with `base`, `autostart`, `hardware`, `hardware-autostart` profiles.
+- DONE: Canonical startup path implemented in `scripts/start.ps1` with `base` and `hardware` profiles, plus compatibility mapping for deprecated names.
 - DONE: Windows preflight script added at `scripts/preflight.ps1`.
 - DONE: Setup matrix and troubleshooting decision tree documented in `docs/guides/startup_profiles.md`.
 - WILL GO: Add profile-aware one-click launchers for non-terminal users (optional VBS variants).
@@ -70,7 +69,7 @@ Success criteria:
 ### Roadmap C: Frontend Productization (Mid Term)
 
 1. Tighten API typing and error rendering across teleop/calibration pages.
-2. Add station-level status panel in UI (Runtime, Backend, Hardware, Dataset).
+2. Add station-level status panel in UI (Service, Hardware, Dataset).
 3. Add operational views: selected calibration, active session, live diagnostics.
 4. Improve route-level loading/error boundaries for platform pages.
 
@@ -82,7 +81,7 @@ Success criteria:
 
 1. Finalize recording workflow contracts and dataset metadata schema.
 2. Define training job submission/status schema and minimal job lifecycle.
-3. Expose dataset/model artifact listing and selection in backend + UI.
+3. Expose dataset/model artifact listing and selection in runtime API + UI.
 4. Add retention and storage policy for datasets/models/calibration artifacts.
 
 Success criteria:
@@ -90,8 +89,8 @@ Success criteria:
 
 ### Roadmap E: Quality and Release Discipline (Mid-Long Term)
 
-1. Expand backend test coverage for teleop/calibration conflict and error contract cases.
-2. Add runtime contract tests (health, command validation, conflict responses).
+1. Add runtime contract tests (health, command validation, conflict responses).
+2. Add desktop and frontend startup checks.
 3. Add lightweight CI gate (build + tests + compose config validation).
 4. Create release checklist with rollback and compatibility notes.
 
@@ -115,7 +114,7 @@ Success criteria:
 | Item | Owner | Status | Target |
 |---|---|---|---|
 | M1. Canonical startup and preflight checks | Platform | IN PROGRESS | Week 1 |
-| M2. Dry-run E2E validation pass | Runtime + Backend | IN PROGRESS | Week 1 |
+| M2. Dry-run E2E validation pass | Runtime + Frontend | IN PROGRESS | Week 1 |
 | M3. Docs consistency pass (remove stale skeleton wording) | Docs | WILL GO | Week 1 |
 | M4. Hardware path validation on WSL2/Linux | Runtime | WILL GO | Week 2 |
 | M5. UI status dashboard for station health | Frontend | WILL GO | Week 2 |

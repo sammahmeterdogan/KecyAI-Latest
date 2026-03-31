@@ -296,31 +296,29 @@ def run_cmd(cmd: List[str], timeout_sec: int = 900) -> Dict[str, Any]:
     }
 
 @mcp.tool
-def http_smoke(base_backend: str = "http://localhost:8080", base_runtime: str = "http://localhost:8100") -> Dict[str, Any]:
+def http_smoke(base_service: str = "http://localhost:8040") -> Dict[str, Any]:
     """Basic health checks + structured error contract sanity."""
-    out: Dict[str, Any] = {"backend": {}, "runtime": {}}
+    out: Dict[str, Any] = {"service": {}, "runtime": {}}
 
-    # runtime
-    r = requests.get(f"{base_runtime}/health", timeout=5)
-    out["runtime"]["health_status"] = r.status_code
-    out["runtime"]["health_body"] = r.text[:500]
+    service_health = requests.get(f"{base_service}/api/health", timeout=5)
+    out["service"]["health_status"] = service_health.status_code
+    out["service"]["health_body"] = service_health.text[:500]
 
-    # backend
-    b = requests.get(f"{base_backend}/api/lerobot/health", timeout=5)
-    out["backend"]["health_status"] = b.status_code
-    out["backend"]["health_body"] = b.text[:500]
+    runtime_health = requests.get(f"{base_service}/api/lerobot/health", timeout=5)
+    out["runtime"]["health_status"] = runtime_health.status_code
+    out["runtime"]["health_body"] = runtime_health.text[:500]
 
     # error contract probe (expect structured json on a known failing call)
     # example: teleop start with missing body -> should return structured error, not {"error":"..."}
-    probe = requests.post(f"{base_backend}/api/lerobot/teleop/start", timeout=5)
-    out["backend"]["probe_status"] = probe.status_code
+    probe = requests.post(f"{base_service}/api/lerobot/teleop/start", timeout=5)
+    out["service"]["probe_status"] = probe.status_code
     try:
         j = probe.json()
-        out["backend"]["probe_json_keys"] = sorted(list(j.keys()))
-        out["backend"]["probe_is_structured"] = all(k in j for k in ["code", "message", "details", "currentStatus"])
+        out["service"]["probe_json_keys"] = sorted(list(j.keys()))
+        out["service"]["probe_is_structured"] = all(k in j for k in ["code", "message", "details", "currentStatus"])
     except Exception:
-        out["backend"]["probe_is_structured"] = False
-        out["backend"]["probe_body"] = probe.text[:500]
+        out["service"]["probe_is_structured"] = False
+        out["service"]["probe_body"] = probe.text[:500]
 
     return out
 

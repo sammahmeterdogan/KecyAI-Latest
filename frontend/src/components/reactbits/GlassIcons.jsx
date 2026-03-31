@@ -7,7 +7,7 @@ import { Box, Server, Database } from 'lucide-react';
 const GlassIcons = () => {
     const icons = [
         { icon: Box, label: 'Runtime' },
-        { icon: Server, label: 'Backend' },
+        { icon: Server, label: 'Service' },
         { icon: Database, label: 'Data' },
     ];
 

@@ -4,7 +4,7 @@ Vite + React frontend for the KECY AI platform.
 
 ## Development
 
-The frontend expects a backend service running on port 8080 (Docker Compose).
+The frontend expects the Python runtime service on port 8040 by default.
 
 1.  **Install dependencies**:
     ```bash
@@ -16,7 +16,7 @@ The frontend expects a backend service running on port 8080 (Docker Compose).
     npm run dev
     ```
     - Access at `http://localhost:3000`.
-    - API requests to `/api/*` are proxied to `http://127.0.0.1:8080`.
+    - API requests to `/api/*` are proxied to `http://127.0.0.1:8040` unless `VITE_API_BASE_URL` overrides the target.
 
 ## Architecture
 - **Framework**: React + Vite

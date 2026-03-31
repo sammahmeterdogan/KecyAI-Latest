@@ -19,6 +19,8 @@ import CapabilityView from './pages/platform/CapabilityView';
 import AdminPage from './pages/platform/AdminPage';
 import Documents from './pages/platform/Documents';
 import Kilavuz from './pages/platform/Kilavuz';
+import DemoLauncher from './pages/platform/DemoLauncher';
+import DesktopLauncher from './pages/platform/DesktopLauncher';
 
 export default function App() {
     return (
@@ -35,6 +37,8 @@ export default function App() {
                 <Route path="motor-ayarlar" element={<Motors />} />
                 <Route path="kalibrasyon" element={<Calibration />} />
                 <Route path="kilavuz" element={<Kilavuz />} />
+                <Route path="demo" element={<DemoLauncher />} />
+                <Route path="launcher" element={<DesktopLauncher />} />
                 <Route path="teleop" element={<Teleop />} />
                     <Route path="cameras" element={<Cameras />} />
                     <Route path="record" element={<Dataset />} />

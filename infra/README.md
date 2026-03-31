@@ -8,21 +8,26 @@ Compose files live under `infra/compose/`.
 
 | Service | Port | Description |
 |---|---|---|
-| `runtime` | 8100 | Python runtime (LeRobot integration) |
-| `backend` | 8080 | Spring Boot gateway API |
-| `frontend` | 3000 | React web UI |
+| `runtime` | 8040 | Python runtime API and hardware integration |
+| `frontend` | 3000 | React web UI (`docker-compose.web.yml` only) |
 
 ## Compose Profiles (by file overlay)
 
 - Base: `docker-compose.yml`
+- Optional web UI: `docker-compose.web.yml`
 - Hardware: `docker-compose.hardware.yml`
-- Backend runtime autostart: `docker-compose.autostart.yml`
 - Cloudflare demo: `docker-compose.cloudflare.yml`
 
 ## Usage
 
 ```bash
 docker compose -f infra/compose/docker-compose.yml up --build
+```
+
+Web/container demo mode:
+
+```bash
+docker compose -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.web.yml up --build
 ```
 
 Hardware mode (Linux/WSL2):
@@ -34,6 +39,5 @@ docker compose -f infra/compose/docker-compose.yml \
 
 ## Health Checks
 
-- Runtime: `http://localhost:8100/health`
-- Backend: `http://localhost:8080/api/lerobot/health`
-- Frontend: `http://localhost:3000`
+- Runtime: `http://localhost:8040/api/health`
+- Frontend: `http://localhost:3000` when using `docker-compose.web.yml` or the desktop dev server

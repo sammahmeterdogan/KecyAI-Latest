@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from .lerobot_adapter import LeRobotTeleopAdapter, JOINT_IDS, JOINT_LIMITS
+from runtime_exec import build_runtime_command, lerobot_checkout_dir
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,14 +25,14 @@ logger = logging.getLogger(__name__)
 
 # Constants
 # Constants
-home_dir = Path(os.environ.get("HOME", "/home/kecyai"))
+home_dir = Path(os.environ.get("HOME") or Path.home())
 DATA_DIR = home_dir / ".kecyai" / "teleop"
 SESSION_FILE = DATA_DIR / "session.json"
 LOG_FILE = DATA_DIR / "logs.txt"
 
 # Whitelists for security (prevent arbitrary command injection)
 ALLOWED_ROBOTS = {
-    "so_100", "so_follower", "bi_so_follower", "so101_follower",
+    "so_100", "so100_follower", "so_follower", "bi_so_follower", "so101_follower",
     "aloha", "reachy2", "mobile_aloha", "koch_follower",
     "openarm_follower", "bi_openarm_follower", "unitree_g1"
 }
@@ -147,24 +148,54 @@ class TeleopManager:
     def _start_web_teleop(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Start web teleop using LeRobotTeleopAdapter.
-        Automatically falls back to dry-run if hardware unavailable.
+        Falls back to dry-run only when the runtime is explicitly configured
+        for dry-run mode.
         """
         robot_type = config.get("robot_type", "so101_follower")
+        if robot_type == "so_100":
+            robot_type = "so100_follower"
         robot_port = config.get("robot_port", "")
-        
-        # Check for selected calibration artifact
+        allow_dry_run = True
+
+        # Fall back to admin config serial_port if not provided in request
+        if not robot_port:
+            try:
+                from hardware_check import HardwareConfig
+                hw = HardwareConfig()
+                hw_config = hw.get()
+                robot_port = hw_config.get("serial_port", "")
+                allow_dry_run = bool(hw_config.get("dry_run", True))
+                if robot_port:
+                    logger.info(f"Using serial_port from admin config: {robot_port}")
+            except Exception:
+                pass
+        else:
+            allow_dry_run = False
+
+        # Resolve calibration: prefer the lerobot-native calibration file
+        # stored inside the KECY artifact wrapper.
         calibration_path = None
         try:
             from calibration.CalibrationAdmin import CalibrationAdmin
+            import json as _json
             admin = CalibrationAdmin()
             selected = admin.get_selected_artifact()
             if selected and selected.get("robot_type") == robot_type:
-                 # Logic: if user selected a specific file, we prefer that.
-                 # But lerobot expects a directory usually or specific file?
-                 # SOFollowerRobotConfig usually loads from standard paths or a 'calibration_dir'.
-                 # We will pass the full path and let the adapter handle it.
-                 calibration_path = selected.get("path")
-                 logger.info(f"Using selected calibration artifact: {calibration_path}")
+                artifact_path = selected.get("path", "")
+                if artifact_path:
+                    try:
+                        with open(artifact_path, "r", encoding="utf-8") as _f:
+                            artifact_data = _json.load(_f)
+                        lr_path = artifact_data.get("lerobot_calibration_path")
+                        if lr_path and Path(lr_path).exists():
+                            calibration_path = lr_path
+                            logger.info("Using lerobot calibration from artifact: %s", calibration_path)
+                        else:
+                            # Fallback: let the adapter try to resolve it
+                            calibration_path = artifact_path
+                            logger.info("Using artifact path for calibration resolution: %s", calibration_path)
+                    except Exception:
+                        calibration_path = artifact_path
         except Exception as e:
             logger.warning(f"Failed to resolve selected calibration: {e}")
 
@@ -174,6 +205,7 @@ class TeleopManager:
                 port=robot_port,
                 cameras=config.get("cameras"),
                 calibration_path=calibration_path,
+                allow_dry_run=allow_dry_run,
             )
 
             self._append_log(f"Web teleop started. dry_run={result.get('dry_run')}")
@@ -279,8 +311,15 @@ class TeleopManager:
             return self.adapter.get_joint_state()
         # Return default zeros when not connected
         return [
-            {"id": jid, "name": jid.replace("_", " ").title(),
-             "position": 0.0, "min": lo, "max": hi}
+            {
+                "id": jid,
+                "servo_id": JOINT_IDS.index(jid) + 1,
+                "name": jid.replace("_", " ").title(),
+                "position": 0.0,
+                "temperature": None,
+                "min": lo,
+                "max": hi,
+            }
             for jid, (lo, hi) in JOINT_LIMITS.items()
         ]
 
@@ -291,7 +330,11 @@ class TeleopManager:
         return {
             "fps": 0, "latency_ms": 0, "dry_run": False,
             "connected": False,
-            "joints": [{"id": jid, "position": 0.0} for jid in JOINT_IDS],
+            "temperature": None,
+            "joints": [
+                {"id": jid, "servo_id": JOINT_IDS.index(jid) + 1, "position": 0.0, "temperature": None}
+                for jid in JOINT_IDS
+            ],
         }
 
     # ───────────── E-STOP ─────────────
@@ -315,16 +358,18 @@ class TeleopManager:
     # ───────────── Torque ─────────────
 
     def read_torque(self) -> Dict[str, Any]:
-        """Read motor torque values. Returns mock data in dry-run mode."""
+        """Read motor torque values from the active adapter."""
         if self.adapter.is_connected():
-            joints = self.adapter.get_joint_state()
-            return {"current_torque": [j.get("torque", 0) for j in joints.get("joints", [])]}
+            return self.adapter.read_torque()
         return {"current_torque": []}
 
     def toggle_torque(self, enabled: bool) -> Dict[str, Any]:
-        """Enable or disable motor torque. No-op in dry-run mode."""
+        """Enable or disable motor torque on the active adapter."""
+        if not self.adapter.is_connected():
+            raise RuntimeError("Web Teleop not running")
+        result = self.adapter.toggle_torque(enabled)
         self._append_log(f"Torque {'enabled' if enabled else 'disabled'}")
-        return {"status": "ok", "torque_status": enabled}
+        return result
 
     # ───────────── Joint Commands ─────────────
 
@@ -427,7 +472,7 @@ class TeleopManager:
     # ───────────── Standard Teleop (subprocess) ─────────────
 
     def _start_standard_teleop(self, config, robot_type, teleop_type):
-        cmd = ["python", "-m", "lerobot.scripts.lerobot_teleoperate"]
+        cmd = build_runtime_command("teleoperate")
         cmd.extend([f"--robot.type={robot_type}"])
         cmd.extend([f"--teleop.type={teleop_type}"])
 
@@ -439,11 +484,12 @@ class TeleopManager:
         logger.info(f"Starting teleop: {' '.join(cmd)}")
         try:
             log_f = open(LOG_FILE, "w")
+            checkout_dir = lerobot_checkout_dir()
             self.process = subprocess.Popen(
                 cmd,
                 stdout=log_f,
                 stderr=subprocess.STDOUT,
-                cwd="/lerobot",
+                cwd=str(checkout_dir) if checkout_dir is not None else None,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"}
             )
 

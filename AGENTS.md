@@ -2,8 +2,8 @@
 
 ## Project Structure & Module Organization
 - `frontend/`: Vite + React UI (routes under `src/`, static assets in `public/`).
-- `backend/`: Spring Boot 3 (Java 17) service. Clean Architecture layers under `src/main/java/com/kecyai/`.
-- `runtime/`: Dockerized LeRobot + ROS runtime used by the backend.
+- `desktop/`: Tauri desktop shell that launches the local Python runtime service.
+- `runtime/`: Python runtime service and vendored LeRobot sources.
 - `infra/`: Docker Compose files and environment templates (see `infra/compose/`).
 - `docs/`: API, architecture, and runbooks.
 - `scripts/`: Windows-friendly helpers (`start.ps1`, `start.vbs`, `stop.*`).
@@ -13,7 +13,7 @@
 - Frontend dev server:
   - `cd frontend`
   - `npm install`
-  - `npm run dev` (serves at `http://localhost:3000`, proxies `/api/*` to `http://127.0.0.1:8080`)
+  - `npm run dev` (serves at `http://localhost:3000`, proxies `/api/*` to `http://127.0.0.1:8040` by default)
 - One-click Windows start: double-click `scripts/start.vbs` (logs in `scripts/_logs/`).
 
 ## Coding Style & Naming Conventions
@@ -24,9 +24,17 @@
 - Frontend styling is primarily vanilla CSS + inline styles (see `frontend/README.md`).
 - Use descriptive, domain-focused class and route names (example: `/kecy/platform/:capId`).
 
+## Upstream Reference Workflow
+- For robotics feature work, inspect the local desktop clone at `C:\Users\ASUS\Desktop\phosphobot` first.
+- If `phosphobot` does not already implement the needed behavior or its implementation is incomplete for the task, inspect `C:\Users\ASUS\Desktop\lerobot-main` next.
+- Treat `phosphobot` and `LeRobot` as reference implementations only. Extract the useful logic, flow, and architecture patterns, then adapt them into KECYAI's own `frontend/`, `runtime/`, and `desktop/` structure.
+- Do not introduce a direct product dependency on `phosphobot` or `LeRobot` unless the task explicitly requires it and that decision is documented.
+- End-user workflows must land in KECYAI's own UI and desktop flow so users do not need to clone repos, install upstream dependencies, edit config files, or run terminal commands manually.
+- When implementing a robotics feature, note which upstream paths were consulted and what was adapted.
+
 ## Testing Guidelines
-- Backend uses Spring Boot test tooling (`spring-boot-starter-test`) and Reactor test utilities.
-  - Run with `mvn test` from `backend/` when adding server logic.
+- Runtime service:
+  - Run focused Python checks with `C:\Users\ASUS\miniforge3\python.exe -m py_compile runtime/app/*.py` when changing transport or runtime entry logic.
 - No dedicated frontend test setup is present; include manual verification steps for UI changes.
 
 ## Commit & Pull Request Guidelines
@@ -38,7 +46,6 @@
   - Screenshots or screen recordings for UI changes.
 
 ## Security & Configuration Tips
-- Autostarting the runtime requires mounting the Docker socket; use only in trusted dev environments.
-  - See `docs/guides/zero_terminal_setup.md` for autostart notes and env flags.
+- Hardware mode requires trusted local hardware access and host serial permissions.
 
 

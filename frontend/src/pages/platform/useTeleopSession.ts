@@ -25,7 +25,7 @@ export function useTeleopSession() {
 
     const refreshRuntime = useCallback(async () => {
         try {
-            await lerobotClient.getHealth();
+            await lerobotClient.getReadiness();
             setRuntimeOnline(true);
             setError("");
         } catch (e: any) {

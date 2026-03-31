@@ -149,6 +149,8 @@ export default function PlatformSidebar({
     appVersion = 'v2.1.0',
 }) {
     const location = useLocation();
+    const launcherRoute = '/kecy/platform/launcher';
+    const launcherActive = location.pathname === launcherRoute;
 
     const [collapsed, setCollapsed] = useState(() => {
         try {
@@ -197,19 +199,26 @@ export default function PlatformSidebar({
             <div className={styles.overlay} />
 
             <div className={styles.header}>
-                <div className={styles.logoGradient}>
-                    {collapsed ? 'K' : <>KECY<span className={styles.logoSubtle}>AI</span></>}
-                </div>
-                <div className={styles.statusRow}>
-                    <div
-                        className={styles.statusDot}
-                        style={{ background: runtimeOnline ? 'rgb(52, 211, 153)' : 'rgb(239, 68, 68)' }}
-                        title={runtimeOnline ? 'Runtime online' : 'Runtime offline'}
-                    />
-                    <div className={styles.statusText}>
-                        {runtimeOnline ? 'Platform Active' : 'Platform Offline'}
+                <NavLink
+                    to={launcherRoute}
+                    className={[styles.launcherLink, launcherActive ? styles.launcherLinkActive : ''].join(' ')}
+                    title="Open Desktop Launcher"
+                    aria-label="Open Desktop Launcher"
+                >
+                    <div className={styles.logoGradient}>
+                        {collapsed ? 'K' : <>KECY<span className={styles.logoSubtle}>AI</span></>}
                     </div>
-                </div>
+                    <div className={styles.statusRow}>
+                        <div
+                            className={styles.statusDot}
+                            style={{ background: runtimeOnline ? 'rgb(52, 211, 153)' : 'rgb(239, 68, 68)' }}
+                            title={runtimeOnline ? 'Runtime online' : 'Runtime offline'}
+                        />
+                        <div className={styles.statusText}>
+                            {runtimeOnline ? 'Platform Active' : 'Platform Offline'}
+                        </div>
+                    </div>
+                </NavLink>
             </div>
 
             <nav className={[styles.nav, styles.scrollbar].join(' ')}>

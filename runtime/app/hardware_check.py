@@ -17,16 +17,23 @@ logger = logging.getLogger(__name__)
 
 # ── Valid values ──
 
-VALID_ROBOT_TYPES = {"so101_follower", "so101_leader", "koch", "koch_bimanual"}
+VALID_ROBOT_TYPES = {
+    "so101_follower",
+    "so100_follower",
+    "so_follower",
+    "so101_leader",
+    "koch",
+    "koch_bimanual",
+}
 VALID_DRIVERS = {"feetech", "dynamixel"}
 DRIVER_IMPORT_MAP = {
-    "feetech": "lerobot.common.robot_devices.motors.feetech",
-    "dynamixel": "lerobot.common.robot_devices.motors.dynamixel",
+    "feetech": "lerobot.motors.feetech",
+    "dynamixel": "lerobot.motors.dynamixel",
 }
 
 # ── Config persistence path ──
 
-_home_dir = Path(os.environ.get("HOME", "/home/kecyai"))
+_home_dir = Path(os.environ.get("HOME") or Path.home())
 CONFIG_DIR = _home_dir / ".kecyai"
 CONFIG_FILE = CONFIG_DIR / "hardware_config.json"
 
@@ -141,7 +148,17 @@ class PreflightManager:
             self.hints.append("No serial port configured. Set via POST /admin/config or SERIAL_PORT env var.")
             return False
 
-        exists = os.path.exists(port)
+        if sys.platform == "win32" and port.upper().startswith("COM"):
+            # On Windows, COM ports don't exist as filesystem paths
+            try:
+                from serial.tools.list_ports import comports
+                available = [p.device for p in comports()]
+                exists = port.upper() in [p.upper() for p in available]
+            except ImportError:
+                exists = True  # Assume exists if we can't check
+        else:
+            exists = os.path.exists(port)
+
         if exists:
             self.checks.append({"id": "serial_port", "status": "ok", "details": f"Port {port} found"})
             return True
@@ -151,10 +168,17 @@ class PreflightManager:
             return False
 
     def check_serial_enumeration(self) -> List[str]:
-        """Enumerate all available serial ports in container."""
-        usb_ports = glob.glob("/dev/ttyUSB*")
-        acm_ports = glob.glob("/dev/ttyACM*")
-        all_ports = sorted(usb_ports + acm_ports)
+        """Enumerate all available serial ports."""
+        if sys.platform == "win32":
+            try:
+                from serial.tools.list_ports import comports
+                all_ports = sorted(p.device for p in comports())
+            except ImportError:
+                all_ports = []
+        else:
+            usb_ports = glob.glob("/dev/ttyUSB*")
+            acm_ports = glob.glob("/dev/ttyACM*")
+            all_ports = sorted(usb_ports + acm_ports)
         self.checks.append({
             "id": "serial_enumeration",
             "status": "ok" if all_ports else "info",
@@ -202,7 +226,9 @@ class PreflightManager:
 
         try:
             import importlib
-            mod = importlib.import_module(module_path)
+            importlib.import_module(module_path)
+            if driver == "feetech":
+                importlib.import_module("scservo_sdk")
             self.checks.append({
                 "id": f"driver_{driver}",
                 "status": "ok",
@@ -213,7 +239,7 @@ class PreflightManager:
             self.checks.append({
                 "id": f"driver_{driver}",
                 "status": "failed",
-                "details": f"Cannot import '{module_path}': {e}",
+                "details": f"Cannot import '{module_path}' dependencies: {e}",
             })
             self.hints.append(f"Install {driver} dependencies or check lerobot installation.")
             return False
@@ -259,13 +285,13 @@ class PreflightManager:
         driver_ok = self.check_driver_import(driver)
 
         # 4. Serial enumeration (always — informational)
-        available_ports = self.check_serial_enumeration()
+        self.check_serial_enumeration()
 
         # 5. Hardware checks (only meaningful when serial_port configured)
         hw_ok = True
         if serial_port:
             hw_ok = self.check_serial_port(serial_port)
-            hw_ok = self.check_cameras() and hw_ok
+            self.check_cameras()
         else:
             self.checks.append({
                 "id": "hardware_config",

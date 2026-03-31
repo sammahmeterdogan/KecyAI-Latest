@@ -5,14 +5,25 @@
 *.swp
 *.swo
 
-# Java / Maven
-backend/target/
+# AI / local assistant config
+.claude/
+.codex/
+
+# Build artifacts
+desktop/src-tauri/target/
+desktop/src-tauri/.pyinstaller/build/
+desktop/src-tauri/.pyinstaller/dist/
+desktop/src-tauri/binaries/
+desktop/src-tauri/gen/
+desktop/src-tauri/resources/frontend/*
+!desktop/src-tauri/resources/frontend/.gitkeep
 *.class
 *.jar
 *.war
 
 # Node / Frontend
 frontend/node_modules/
+desktop/node_modules/
 frontend/dist/
 frontend/.cache/
 *.tsbuildinfo
@@ -24,10 +35,20 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # Docker
 .env
+.env.*
 !infra/.env.example
+!.env.example
+!.env.*.example
+*.local
 
 # OS
 .DS_Store
@@ -45,3 +66,7 @@ runtime/.env
 *.log
 *.log.*
 scripts/_logs/
+
+# Local verification / artifacts
+_artifacts/
+tmp_teleop_ui.png

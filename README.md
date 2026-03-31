@@ -4,32 +4,31 @@ Web-based robotics platform for teleoperation, calibration, recording, and train
 
 ## Quick Start
 
-### Windows (recommended)
+### Windows Desktop (recommended)
 
 ```powershell
-.\scripts\start.ps1 -Profile base
+.\scripts\start.ps1 -Target desktop -Profile base
 ```
 
-### Docker Compose (all platforms)
+This launches the canonical desktop path: Tauri desktop shell, host Vite dev server, and the local Python runtime service when requested from the launcher.
+
+### Docker Compose (runtime only)
 
 ```bash
 docker compose -f infra/compose/docker-compose.yml up --build
 ```
 
 Services:
-- Frontend: `http://localhost:3000`
-- Backend API: `http://localhost:8080`
-- Runtime: `http://localhost:8100`
+- Runtime API: `http://localhost:8040`
+- Frontend dev server: `http://localhost:3000` when started through the desktop path
 
 ## Startup Profiles
 
 Use the canonical startup script:
 
 ```powershell
-.\scripts\start.ps1 -Profile base
-.\scripts\start.ps1 -Profile autostart
-.\scripts\start.ps1 -Profile hardware
-.\scripts\start.ps1 -Profile hardware-autostart
+.\scripts\start.ps1 -Target desktop -Profile base
+.\scripts\start.ps1 -Target desktop -Profile hardware
 ```
 
 Preflight check only:
@@ -43,7 +42,7 @@ See `docs/guides/startup_profiles.md` for profile mapping and troubleshooting.
 ## Project Structure
 
 ```text
-backend/   Spring Boot API and orchestration layer
+desktop/   Tauri desktop shell and launcher
 frontend/  Vite + React platform UI
 runtime/   Python runtime service and vendored LeRobot sources
 infra/     Docker Compose files and infra templates
@@ -61,11 +60,10 @@ npm install
 npm run dev
 ```
 
-Backend tests:
+Desktop:
 
 ```bash
-cd backend
-mvn test
+npm --prefix desktop run dev
 ```
 
 ## Documentation
@@ -77,7 +75,6 @@ mvn test
 
 ## Security Notes
 
-- Docker socket mount (`autostart` profiles) is for trusted development only.
 - Hardware mode requires Linux/WSL2 device passthrough.
 - Cloudflare demo profile exposes your local stack publicly.
 

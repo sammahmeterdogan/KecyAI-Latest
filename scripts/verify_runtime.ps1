@@ -25,28 +25,27 @@ function Test-Endpoint {
 
 try {
     # 1. Health
-    $h = Test-Endpoint "http://localhost:8100/health"
+    $h = Test-Endpoint "http://localhost:8040/api/ready"
     if ($h.status -ne "ok") { throw "Health check failed" }
 
     # 2. Preflight
-    $p = Test-Endpoint "http://localhost:8100/admin/preflight"
+    $p = Test-Endpoint "http://localhost:8040/api/lerobot/admin/preflight"
     Write-Host "Preflight Ready: $($p.ready)"
     Write-Host "Hints: $($p.hints -join ', ')"
 
     # 3. Calibration List
-    $c = Test-Endpoint "http://localhost:8100/admin/calibration/list"
+    $c = Test-Endpoint "http://localhost:8040/api/lerobot/admin/calibration/list"
     Write-Host "Artifacts found: $($c.artifacts.Count)"
 
     # 4. Calibration Latest
-    $l = Test-Endpoint "http://localhost:8100/admin/calibration/latest"
+    $l = Test-Endpoint "http://localhost:8040/api/lerobot/admin/calibration/latest"
 
     # 5. Teleop Start (Dry Run)
-    $t = Test-Endpoint "http://localhost:8100/teleop/start" "Post" @{robot_type="so101_follower"; dry_run=$true}
-    Write-Host "Teleop Mode: $($t.mode)"
-    if ($t.mode -ne "simulation") { Write-Warning "Expected simulation mode!" }
+    $t = Test-Endpoint "http://localhost:8040/api/lerobot/teleop/start" "Post" @{robot_type="so101_follower"; teleop_type="web"}
+    Write-Host "Teleop State: $($t.state)"
 
     # 6. Stop Teleop
-    Test-Endpoint "http://localhost:8100/teleop/stop" "Post" | Out-Null
+    Test-Endpoint "http://localhost:8040/api/lerobot/teleop/stop" "Post" | Out-Null
 
 } catch {
     Write-Error $_

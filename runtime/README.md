@@ -4,7 +4,7 @@ Dockerized Python runtime service for teleoperation, calibration, recording, and
 
 ## Responsibilities
 
-- Provide runtime endpoints used by the backend (`/health`, teleop, calibration, admin flows).
+- Provide the primary API service used directly by the frontend and desktop flow (`/api/health`, `/api/lerobot/*`).
 - Integrate with vendored upstream LeRobot sources.
 - Run in dry-run mode by default, with hardware mode via compose overlays.
 

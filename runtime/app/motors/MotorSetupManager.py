@@ -21,6 +21,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from runtime_exec import build_runtime_command, lerobot_checkout_dir
+
 
 MOTOR_STEPS: List[Dict[str, Any]] = [
     {"key": "gripper", "id": 6},
@@ -91,7 +93,7 @@ class MotorSetupManager:
             self._command = self._build_command(flow, port)
 
         try:
-            cwd = "/lerobot" if Path("/lerobot").exists() else None
+            checkout_dir = lerobot_checkout_dir()
             process = subprocess.Popen(
                 self._command,
                 stdin=subprocess.PIPE,
@@ -99,7 +101,7 @@ class MotorSetupManager:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
-                cwd=cwd,
+                cwd=str(checkout_dir) if checkout_dir is not None else None,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"},
             )
         except FileNotFoundError:
@@ -215,7 +217,7 @@ class MotorSetupManager:
     # ----------------------------
 
     def _build_command(self, flow: str, port: str) -> List[str]:
-        cmd = ["lerobot-setup-motors"]
+        cmd = build_runtime_command("setup-motors")
         if flow == "leader":
             cmd.extend(["--teleop.type=so101_leader", f"--teleop.port={port}"])
         else:

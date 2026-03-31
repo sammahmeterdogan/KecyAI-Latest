@@ -4,7 +4,7 @@ export default function Documents() {
     return (
         <SubPage
             title="Documents"
-            description="Kurulum, donanım, runtime ve API rehberleri tek yerde. Bu sayfa KECY Platform arayüzüyle aynı görsel tema ve yapıyı kullanır."
+            description="Kurulum, donanım, runtime ve API rehberleri."
             sourceUrl="/documents"
             sourceLabel="KECY AI Documents"
         >
@@ -17,7 +17,7 @@ export default function Documents() {
                 {[
                     { title: 'Kurulum', note: 'Docker, Windows, ilk çalıştırma' },
                     { title: 'Runtime', note: 'LeRobot + ROS2 servisleri' },
-                    { title: 'API', note: 'Backend istekleri ve örnekler' },
+                    { title: 'API', note: 'Runtime servis istekleri ve örnekler' },
                     { title: 'Robot Kit', note: 'SO-ARM101, kalibrasyon, sorun giderme' },
                 ].map((item) => (
                     <div key={item.title} style={{

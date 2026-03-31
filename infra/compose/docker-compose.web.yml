@@ -1,0 +1,17 @@
+services:
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    container_name: kecyai-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../frontend/src:/app/src
+      - ../../frontend/public:/app/public
+    environment:
+      - VITE_API_BASE_URL=http://runtime:8040
+    depends_on:
+      - runtime
+    networks:
+      - kecy-network

@@ -2,18 +2,15 @@
 Calibration Admin Module.
 Manages listing, selecting, and applying calibration artifacts.
 """
-import os
 import json
 import logging
 import time
 from pathlib import Path
 from typing import List, Dict, Optional, Any
+from .CalibrationManager import CALIBRATION_DIR
 
 logger = logging.getLogger(__name__)
 
-# Same path as CalibrationManager
-home_dir = Path(os.environ.get("HOME", "/home/kecyai"))
-CALIBRATION_DIR = home_dir / ".kecyai" / "calibration"
 SELECTED_FILE = CALIBRATION_DIR / "selected.json"
 
 class CalibrationAdmin:

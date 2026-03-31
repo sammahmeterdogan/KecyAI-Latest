@@ -1,1211 +1,709 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Activity,
+    AlertCircle,
     AlertTriangle,
     ArrowRight,
+    CheckCircle,
     Loader2,
-    Play,
-    RefreshCw,
     RotateCcw,
-    Server,
-    Usb,
 } from 'lucide-react';
 import { lerobotClient } from '../../lib/api/lerobotClient';
+import { cn } from '../../lib/utils';
 import calibrationPosition1 from '../../assets/calibration/CalibrationPosition1.jpg';
 import calibrationPosition2 from '../../assets/calibration/CalibrationPosition2.jpg';
-import styles from './TeleopControl.module.css';
-
-const TAB_STORAGE_KEY = 'kecyai.calibration.active-tab';
-const HISTORY_POINTS = 32;
-const POSITION_LIMIT = 4095;
-const TORQUE_LIMIT = 200;
-const TERMINAL_LIMIT = 72;
-const ESTOP_HOLD_MS = 1100;
 
 const JOINTS = [
-    { id: 1, label: 'JOINT 1' },
-    { id: 2, label: 'JOINT 2' },
-    { id: 3, label: 'JOINT 3' },
-    { id: 4, label: 'JOINT 4' },
-    { id: 5, label: 'JOINT 5' },
-    { id: 6, label: 'GRIPPER' },
+    { id: 'shoulder_pan',  label: 'Shoulder Pan' },
+    { id: 'shoulder_lift', label: 'Shoulder Lift' },
+    { id: 'elbow_flex',    label: 'Elbow Flex' },
+    { id: 'wrist_flex',    label: 'Wrist Flex' },
+    { id: 'wrist_roll',    label: 'Wrist Roll' },
+    { id: 'gripper',       label: 'Gripper' },
 ];
 
-const STEP_CONTENT = {
-    1: {
-        id: 1,
-        title: 'PREPARE ROBOT',
-        description: 'Confirm the target robot, support the arm, and clear the workspace before torque is released.',
-        physical: [
-            'Keep one hand ready to support the arm.',
-            'Verify power and USB are both connected.',
-            'Confirm the correct robot and port before starting.',
-        ],
-        image: calibrationPosition1,
-        imageLabel: 'REFERENCE OVERVIEW',
-        imageCaption: 'Position 1 and Position 2 use the reference poses shown here. Match them closely before each backend step.',
-    },
-    2: {
-        id: 2,
-        title: 'POSITION 1',
-        description: 'Move the arm forward and fully close the gripper. The moving claw should sit on the left side.',
-        physical: [
-            'Bring the arm forward into the shown pose.',
-            'Close the gripper completely.',
-            'Keep the base steady before advancing.',
-        ],
-        image: calibrationPosition1,
-        imageLabel: 'REFERENCE POSITION 1',
-        imageCaption: 'Arm forward. Gripper fully closed. Moving claw on the left side of the arm.',
-    },
-    3: {
-        id: 3,
-        title: 'POSITION 2',
-        description: 'Twist the arm left and fully open the gripper so the backend can solve the second calibration pose.',
-        physical: [
-            'Rotate the arm left into the shown pose.',
-            'Open the gripper completely.',
-            'Hold the pose steady while the backend finishes.',
-        ],
-        image: calibrationPosition2,
-        imageLabel: 'REFERENCE POSITION 2',
-        imageCaption: 'Arm twisted left. Gripper fully open. Hold this pose until the backend responds.',
-    },
-};
+const EMPTY_RANGES = JOINTS.map(j => ({ id: j.id, label: j.label, min: null, pos: null, max: null }));
 
-const PILL_TONES = {
-    neutral: 'border-white/10 bg-white/5 text-white/72',
-    ok: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-200',
-    warn: 'border-amber-500/30 bg-amber-500/12 text-amber-100',
-    error: 'border-red-500/30 bg-red-500/12 text-red-100',
-};
-
-function joinClasses(...values) {
-    return values.filter(Boolean).join(' ');
+function fmtVal(v) {
+    return v !== null && v !== undefined ? Math.round(v) : '—';
 }
 
-function getInitialTab() {
-    if (typeof window === 'undefined') return 'calibration';
-    const stored = window.localStorage.getItem(TAB_STORAGE_KEY);
-    return stored === 'joints' ? 'joints' : 'calibration';
-}
-
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
-
-function createPositionHistory(initialValues) {
-    return initialValues.map((value) =>
-        Array.from({ length: HISTORY_POINTS }, (_, index) => ({
-            x: index,
-            actual: value,
-            goal: value,
-        })),
+function glassCard(extra = '') {
+    return cn(
+        'rounded-[1.45rem] border border-white/10 bg-black/70 shadow-[0_18px_48px_rgba(0,0,0,0.32)] backdrop-blur-xl',
+        extra,
     );
 }
 
-function createTorqueHistory(initialValues) {
-    return initialValues.map((value) =>
-        Array.from({ length: HISTORY_POINTS }, (_, index) => ({
-            x: index,
-            value,
-        })),
-    );
-}
-
-function buildPath(values, min, max, accessor) {
-    const points = values.map((point, index) => {
-        const x = values.length === 1 ? 0 : (index / (values.length - 1)) * 100;
-        const raw = accessor(point);
-        const normalized = max === min ? 0.5 : (raw - min) / (max - min);
-        const y = 52 - clamp(normalized, 0, 1) * 52;
-        return `${x},${y}`;
-    });
-    return `M ${points.join(' L ')}`;
-}
-
-function formatTimestamp(date = new Date()) {
-    return date.toLocaleTimeString([], { hour12: false });
-}
-
-function resolveRobotDevice(robot, devices, index) {
-    if (!robot) return devices[index] ?? devices[0] ?? null;
-
+function SectionLabel({ children }) {
     return (
-        devices.find((device) =>
-            [device.serial_number, device.device, device.name].some(
-                (value) => typeof value === 'string' && value === robot.device_name,
-            ),
-        ) ??
-        devices.find((device) => device.name === robot.name) ??
-        devices[index] ??
-        devices[0] ??
-        null
-    );
-}
-
-function formatRobotName(name) {
-    return (name || 'Unknown Robot').toUpperCase();
-}
-
-function formatRobotLabel(robot, device) {
-    const name = formatRobotName(robot?.name);
-    const port = device?.device || robot?.device_name || 'NO PORT';
-    return `${name} · ${port}`;
-}
-
-function toneClass(tone) {
-    return (
-        {
-            neutral: 'text-white/70',
-            ok: 'text-emerald-200',
-            warn: 'text-amber-100',
-            error: 'text-red-100',
-        }[tone] || 'text-white/70'
-    );
-}
-
-function PanelFrame({ className = '', children }) {
-    return (
-        <section
-            className={joinClasses(
-                styles.glassCard,
-                styles.fadeInItem,
-                'rounded-[1.55rem] border border-white/10 bg-black/72 shadow-[0_18px_48px_rgba(0,0,0,0.32)] backdrop-blur-xl',
-                className,
-            )}
-        >
+        <div className="font-mono text-[10px] uppercase tracking-[0.26em] text-white/34 mb-3">
             {children}
-        </section>
-    );
-}
-
-function StatusPill({ tone = 'neutral', children, className = '' }) {
-    return (
-        <span
-            className={joinClasses(
-                'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
-                PILL_TONES[tone],
-                className,
-            )}
-        >
-            {children}
-        </span>
-    );
-}
-
-function InfoRow({ label, value, tone = 'text-white/78' }) {
-    return (
-        <div className="flex items-start justify-between gap-3 border-b border-white/8 py-2.5 last:border-b-0 last:pb-0">
-            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">{label}</div>
-            <div className={joinClasses('text-right font-mono text-xs leading-6', tone)}>{value}</div>
         </div>
     );
 }
 
-function MiniChart({ data, mode }) {
-    const min = mode === 'position' ? 0 : -TORQUE_LIMIT;
-    const max = mode === 'position' ? POSITION_LIMIT : TORQUE_LIMIT;
-    const primaryPath = buildPath(
-        data,
-        min,
-        max,
-        mode === 'position' ? (point) => point.actual : (point) => point.value,
-    );
-    const goalPath =
-        mode === 'position'
-            ? buildPath(data, min, max, (point) => point.goal)
-            : null;
+function Alert({ variant = 'default', icon: Icon, title, children }) {
+    const base = 'rounded-[1rem] border px-4 py-3 text-sm leading-6';
+    const variantCls = {
+        default:      'border-white/12 bg-white/[0.04] text-white/78',
+        destructive:  'border-red-500/30 bg-red-500/10 text-red-100',
+        warning:      'border-amber-500/30 bg-amber-500/10 text-amber-100',
+        success:      'border-emerald-500/30 bg-emerald-500/10 text-emerald-100',
+        loading:      'border-amber-400/22 bg-amber-500/8 text-amber-50',
+    }[variant] || 'border-white/12 bg-white/[0.04]';
 
     return (
-        <div className="h-36 rounded-[1.2rem] border border-white/10 bg-black/55 p-3">
-            <svg viewBox="0 0 100 52" className="h-full w-full overflow-visible">
-                <path d="M 0,0 L 100,0" stroke="rgba(255,255,255,0.06)" strokeWidth="0.4" />
-                <path d="M 0,26 L 100,26" stroke="rgba(255,255,255,0.06)" strokeWidth="0.4" />
-                <path d="M 0,52 L 100,52" stroke="rgba(255,255,255,0.06)" strokeWidth="0.4" />
-                {goalPath ? (
-                    <path
-                        d={goalPath}
-                        fill="none"
-                        stroke="rgba(245,158,11,0.72)"
-                        strokeDasharray="2.5 2.5"
-                        strokeWidth="0.9"
-                    />
-                ) : null}
-                <path
-                    d={primaryPath}
-                    fill="none"
-                    stroke="rgba(16,185,129,0.98)"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="1.5"
-                />
-            </svg>
-        </div>
-    );
-}
-
-function ReferencePanel({ step }) {
-    return (
-        <div className="overflow-hidden rounded-[1.35rem] border border-white/10 bg-black/60">
-            <div className="relative">
-                <img
-                    src={step.image}
-                    alt={step.title}
-                    className="h-[320px] w-full object-cover object-center md:h-[420px]"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/18 to-transparent" />
-                <div className="absolute left-4 top-4 rounded-full border border-white/12 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-white/78 backdrop-blur-xl">
-                    {step.imageLabel}
+        <div className={cn(base, variantCls)}>
+            <div className="flex items-start gap-3">
+                {Icon && <Icon className="mt-0.5 h-4 w-4 shrink-0" />}
+                <div className="min-w-0">
+                    {title && <div className="font-semibold mb-1">{title}</div>}
+                    <div className="font-mono text-[12px] leading-6 opacity-90">{children}</div>
                 </div>
-                {step.id === 1 ? (
-                    <div className="absolute bottom-4 right-4 grid w-[140px] grid-cols-2 gap-2 rounded-[1rem] border border-white/10 bg-black/70 p-2 backdrop-blur-xl">
-                        <img src={calibrationPosition1} alt="Position 1 thumbnail" className="h-16 w-full rounded-lg object-cover" />
-                        <img src={calibrationPosition2} alt="Position 2 thumbnail" className="h-16 w-full rounded-lg object-cover" />
-                    </div>
-                ) : null}
-            </div>
-            <div className="border-t border-white/8 p-4">
-                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Reference Notes</div>
-                <p className="mt-3 max-w-2xl font-mono text-sm leading-7 text-white/64">{step.imageCaption}</p>
             </div>
         </div>
     );
 }
 
-function StepPill({ step, active }) {
+function CalibrationValuesTable({ ranges, isRecording, activeJoint }) {
     return (
-        <div
-            className={joinClasses(
-                'rounded-full border px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-all',
-                active
-                    ? 'border-emerald-400/36 bg-emerald-500/12 text-emerald-100'
-                    : 'border-white/10 bg-transparent text-white/38',
-            )}
-        >
-            {step.title}
-        </div>
-    );
-}
-
-function TerminalPanel({ lines, terminalRef }) {
-    return (
-        <PanelFrame className="p-4 md:p-5">
-            <div className="flex flex-col gap-3 border-b border-white/8 pb-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/34">System Log</div>
-                    <div className="mt-2 text-xl font-semibold tracking-[-0.04em] text-white">Live Backend Responses</div>
-                </div>
-                <StatusPill tone="neutral">Terminal Online</StatusPill>
+        <div className={glassCard('p-5')}>
+            <div className="flex items-center justify-between mb-4">
+                <SectionLabel>Calibration Values</SectionLabel>
+                {isRecording && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-amber-300">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        Live
+                    </span>
+                )}
             </div>
 
-            <div className={joinClasses(styles.dataStream, 'mt-4 rounded-[1.2rem] border border-white/10 bg-black/82')}>
-                <div ref={terminalRef} className={joinClasses(styles.logContainer, 'h-56 overflow-y-auto px-4 py-3')}>
-                    {lines.length === 0 ? (
-                        <div className="font-mono text-xs uppercase tracking-[0.18em] text-white/30">No backend responses yet.</div>
-                    ) : (
-                        <div className="space-y-2 font-mono text-[12px] leading-6">
-                            {lines.map((line) => (
-                                <div key={line.id} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
-                                    <span className="text-white/26">{line.time}</span>
-                                    <span className={toneClass(line.tone)}>{line.message}</span>
-                                </div>
-                            ))}
+            {/* Header row */}
+            <div className="grid grid-cols-[1fr_60px_60px_60px] gap-1 mb-2 px-2">
+                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/30">Joint</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-red-300/50 text-right">Min</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-emerald-300/50 text-right">Pos</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/50 text-right">Max</span>
+            </div>
+
+            <div className="space-y-1">
+                {ranges.map(r => {
+                    const isActive = activeJoint === r.id;
+                    const hasData  = r.min !== null || r.pos !== null || r.max !== null;
+                    return (
+                        <div
+                            key={r.id}
+                            className={cn(
+                                'grid grid-cols-[1fr_60px_60px_60px] gap-1 items-center rounded-lg px-2 py-2 transition-colors',
+                                isActive
+                                    ? 'border border-amber-500/30 bg-amber-500/8'
+                                    : hasData
+                                        ? 'border border-white/6 bg-white/[0.02]'
+                                        : 'border border-transparent',
+                            )}
+                        >
+                            <span className={cn(
+                                'font-mono text-[11px] font-semibold truncate',
+                                isActive ? 'text-amber-200' : 'text-white/70',
+                            )}>
+                                {isActive && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" />}
+                                {r.label}
+                            </span>
+                            <span className={cn('font-mono text-xs text-right tabular-nums', r.min !== null ? 'text-red-300' : 'text-white/20')}>
+                                {fmtVal(r.min)}
+                            </span>
+                            <span className={cn('font-mono text-xs text-right tabular-nums', r.pos !== null ? 'text-emerald-300' : 'text-white/20')}>
+                                {fmtVal(r.pos)}
+                            </span>
+                            <span className={cn('font-mono text-xs text-right tabular-nums', r.max !== null ? 'text-sky-300' : 'text-white/20')}>
+                                {fmtVal(r.max)}
+                            </span>
                         </div>
-                    )}
-                </div>
+                    );
+                })}
             </div>
-        </PanelFrame>
+
+            {isRecording && (
+                <p className="mt-3 font-mono text-[10px] text-amber-300/50 leading-5">
+                    Move joint through full range — min/max update live.
+                </p>
+            )}
+        </div>
     );
 }
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Calibration() {
-    const [activeTab, setActiveTab] = useState(getInitialTab);
-    const [serverStatus, setServerStatus] = useState(null);
-    const [scanDevices, setScanDevices] = useState([]);
-    const [statusError, setStatusError] = useState('');
-    const [selectedRobotId, setSelectedRobotId] = useState(0);
-    const [runtimeRefreshing, setRuntimeRefreshing] = useState(false);
+    // ── UI state (mirrors phosphobot's wizard) ────────────────────────────────
+    const [wizardStep, setWizardStep]   = useState(1);       // 1 | 2 | 3
+    const [uiStatus,  setUiStatus]      = useState('idle');  // idle | loading | in_progress | completed | error
+    const [errorMsg,  setErrorMsg]      = useState('');
+    const [artifactPath, setArtifactPath] = useState('');
 
-    const [wizardStep, setWizardStep] = useState(1);
-    const [calibrationState, setCalibrationState] = useState('idle');
-    const [calibrationMessage, setCalibrationMessage] = useState('');
-    const [calibrationError, setCalibrationError] = useState('');
-    const [calibrationLoading, setCalibrationLoading] = useState(false);
-    const [savedConfigPath, setSavedConfigPath] = useState('');
-    const [tutorialOpen, setTutorialOpen] = useState(false);
+    // ── Backend status ────────────────────────────────────────────────────────
+    const [calStatus,  setCalStatus]  = useState(null);
+    const [calRanges,  setCalRanges]  = useState(EMPTY_RANGES);
+    const [robotConfig, setRobotConfig] = useState(null);
+    const [teleop,      setTeleop]      = useState({ state: 'idle' });
 
-    const [plotMode, setPlotMode] = useState('position');
-    const [updateInterval, setUpdateInterval] = useState(0.15);
-    const [jointError, setJointError] = useState('');
-    const [torqueActionState, setTorqueActionState] = useState('idle');
-    const [goalAngles, setGoalAngles] = useState(Array(JOINTS.length).fill(0));
-    const [jointPositions, setJointPositions] = useState(Array(JOINTS.length).fill(0));
-    const [jointTorques, setJointTorques] = useState(Array(JOINTS.length).fill(0));
-    const [positionHistory, setPositionHistory] = useState(createPositionHistory(Array(JOINTS.length).fill(0)));
-    const [torqueHistory, setTorqueHistory] = useState(createTorqueHistory(Array(JOINTS.length).fill(0)));
-    const [systemLog, setSystemLog] = useState([
-        {
-            id: 'boot',
-            time: formatTimestamp(),
-            tone: 'neutral',
-            message: 'Waiting for the calibration backend.',
-        },
-    ]);
-    const [estopHoldProgress, setEstopHoldProgress] = useState(0);
+    const mountedRef    = useRef(true);
+    // Refs so syncStatus stays stable (no re-creation on state changes)
+    const uiStatusRef   = useRef('idle');
+    const wizardStepRef = useRef(1);
 
-    const initializedJointRobotRef = useRef(null);
-    const runtimeSignatureRef = useRef('');
-    const mountedRef = useRef(true);
-    const terminalRef = useRef(null);
-    const estopTimerRef = useRef(null);
-
-    const appendSystemLog = useCallback((message, tone = 'neutral') => {
-        setSystemLog((previous) => [
-            ...previous.slice(-(TERMINAL_LIMIT - 1)),
-            {
-                id: `${Date.now()}-${Math.random()}`,
-                time: formatTimestamp(),
-                tone,
-                message,
-            },
-        ]);
-    }, []);
-
+    // ── Config fetch (once) ───────────────────────────────────────────────────
     useEffect(() => {
         mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            if (estopTimerRef.current) {
-                window.clearInterval(estopTimerRef.current);
-            }
-        };
+
+        lerobotClient.adminGetConfig().catch(() => null).then(cfg => {
+            if (mountedRef.current && cfg) setRobotConfig(cfg);
+        });
+        lerobotClient.teleopStatus().catch(() => ({ state: 'idle' })).then(tel => {
+            if (mountedRef.current && tel) setTeleop(tel);
+        });
+
+        return () => { mountedRef.current = false; };
     }, []);
 
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            window.localStorage.setItem(TAB_STORAGE_KEY, activeTab);
-        }
-    }, [activeTab]);
+    // Keep refs in sync with state (no extra renders)
+    useEffect(() => { uiStatusRef.current = uiStatus; }, [uiStatus]);
+    useEffect(() => { wizardStepRef.current = wizardStep; }, [wizardStep]);
 
-    useEffect(() => {
-        if (!terminalRef.current) return;
-        terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-    }, [systemLog]);
-
-    const fetchRuntime = useCallback(
-        async (source = 'poll') => {
-            try {
-                const [status, devices] = await Promise.all([
-                    lerobotClient.getServerStatus(),
-                    lerobotClient.scanLocalDevices(),
-                ]);
-
-                if (!mountedRef.current) return;
-
-                const nextDevices = Array.isArray(devices.devices) ? devices.devices : [];
-                const nextRobotStatuses = Array.isArray(status.robot_status) ? status.robot_status : [];
-
-                setServerStatus(status);
-                setScanDevices(nextDevices);
-                setStatusError('');
-                setSelectedRobotId((current) => (nextRobotStatuses.length > 0 ? clamp(current, 0, nextRobotStatuses.length - 1) : 0));
-
-                const signature = JSON.stringify({
-                    status: status.status,
-                    robots: nextRobotStatuses.map((robot) => `${robot.name}:${robot.device_name || 'none'}`),
-                    devices: nextDevices.map((device) => device.device),
-                });
-
-                if (source !== 'poll' || runtimeSignatureRef.current !== signature) {
-                    const robotCount = nextRobotStatuses.length;
-                    const deviceCount = nextDevices.length;
-                    appendSystemLog(
-                        `${source === 'manual' ? 'Status refresh complete' : 'Runtime sync'}: ${robotCount} robot${robotCount === 1 ? '' : 's'} / ${deviceCount} device${deviceCount === 1 ? '' : 's'} detected.`,
-                        status.status === 'ok' ? 'ok' : 'error',
-                    );
-                    runtimeSignatureRef.current = signature;
-                }
-            } catch (error) {
-                if (!mountedRef.current) return;
-                const message = error?.message || 'Unable to reach the calibration backend.';
-                setStatusError(message);
-
-                if (source !== 'poll' || runtimeSignatureRef.current !== 'offline') {
-                    appendSystemLog(message, 'error');
-                    runtimeSignatureRef.current = 'offline';
-                }
-            }
-        },
-        [appendSystemLog],
-    );
-
-    useEffect(() => {
-        fetchRuntime('initial');
-        const interval = window.setInterval(() => {
-            fetchRuntime('poll');
-        }, 5000);
-
-        return () => {
-            window.clearInterval(interval);
-        };
-    }, [fetchRuntime]);
-
-    const robotStatuses = Array.isArray(serverStatus?.robot_status) ? serverStatus.robot_status : [];
-    const robotDevices = useMemo(
-        () => robotStatuses.map((robot, index) => resolveRobotDevice(robot, scanDevices, index)),
-        [robotStatuses, scanDevices],
-    );
-
-    const currentRobot = robotStatuses[selectedRobotId] ?? null;
-    const currentDevice = robotDevices[selectedRobotId] ?? null;
-    const backendOnline = Boolean(serverStatus) && !statusError;
-    const mockFallback = currentRobot?.name?.startsWith?.('mock') || currentRobot?.device_name === 'simulation';
-    const progressPct = `${(wizardStep / 3) * 100}%`;
-    const currentStep = STEP_CONTENT[clamp(wizardStep, 1, 3)];
-    const robotInfoLabel = currentRobot ? formatRobotLabel(currentRobot, currentDevice) : 'NO ROBOT · NO PORT';
-    const versionLabel = serverStatus?.version_id ? String(serverStatus.version_id).toUpperCase() : 'LOCAL';
-
-    const calibrationTone =
-        calibrationState === 'success'
-            ? 'ok'
-            : calibrationState === 'error'
-                ? 'error'
-                : calibrationState === 'in_progress' || calibrationLoading
-                    ? 'warn'
-                    : 'neutral';
-
-    const calibrationStateLabel =
-        calibrationLoading
-            ? 'RUNNING'
-            : calibrationState === 'success'
-                ? 'COMPLETED'
-                : calibrationState === 'error'
-                    ? 'BLOCKED'
-                    : calibrationState === 'in_progress'
-                        ? 'IN PROGRESS'
-                        : 'READY';
-
-    const calibrationActionLabel =
-        calibrationLoading
-            ? 'WORKING'
-            : calibrationState === 'in_progress'
-                ? wizardStep < 3
-                    ? 'ADVANCE'
-                    : 'COMPLETE'
-                : 'START';
-
-    const refreshRuntime = async () => {
-        setRuntimeRefreshing(true);
-        await fetchRuntime('manual');
-        if (mountedRef.current) {
-            setRuntimeRefreshing(false);
-        }
-    };
-
-    useEffect(() => {
-        if (activeTab !== 'joints' || !currentRobot) return undefined;
-
-        let cancelled = false;
-
-        const initializeJoints = async () => {
-            try {
-                const jointResponse = await lerobotClient.readJoints({
-                    robotId: selectedRobotId,
-                    unit: 'motor_units',
-                    joints_ids: null,
-                    source: 'robot',
-                });
-
-                if (cancelled) return;
-
-                const values = JOINTS.map((_, index) => Number(jointResponse.angles[index] ?? 0));
-                initializedJointRobotRef.current = selectedRobotId;
-                setGoalAngles(values);
-                setJointPositions(values);
-                setPositionHistory(createPositionHistory(values));
-                setTorqueHistory(createTorqueHistory(Array(JOINTS.length).fill(0)));
-                setJointError('');
-            } catch (error) {
-                if (cancelled) return;
-                setJointError(error?.message || 'Unable to initialize joint state.');
-            }
-        };
-
-        if (initializedJointRobotRef.current !== selectedRobotId) {
-            initializeJoints();
-        }
-
-        return () => {
-            cancelled = true;
-        };
-    }, [activeTab, currentRobot, selectedRobotId]);
-
-    useEffect(() => {
-        if (activeTab !== 'joints' || !currentRobot) return undefined;
-
-        let cancelled = false;
-
-        const pollJointState = async () => {
-            try {
-                const [jointResponse, torqueResponse] = await Promise.all([
-                    lerobotClient.readJoints({
-                        robotId: selectedRobotId,
-                        unit: 'motor_units',
-                        joints_ids: null,
-                        source: 'robot',
-                    }),
-                    lerobotClient.readTorque(selectedRobotId),
-                ]);
-
-                if (cancelled) return;
-
-                const nextPositions = JOINTS.map((_, index) => Number(jointResponse.angles[index] ?? 0));
-                const nextTorques = JOINTS.map((_, index) => Number(torqueResponse.current_torque[index] ?? 0));
-
-                setJointPositions(nextPositions);
-                setJointTorques(nextTorques);
-                setPositionHistory((previous) =>
-                    previous.map((series, index) => {
-                        const next = series.slice(1);
-                        next.push({
-                            x: series[series.length - 1].x + 1,
-                            actual: nextPositions[index],
-                            goal: goalAngles[index],
-                        });
-                        return next;
-                    }),
-                );
-                setTorqueHistory((previous) =>
-                    previous.map((series, index) => {
-                        const next = series.slice(1);
-                        next.push({
-                            x: series[series.length - 1].x + 1,
-                            value: nextTorques[index],
-                        });
-                        return next;
-                    }),
-                );
-                setJointError('');
-            } catch (error) {
-                if (cancelled) return;
-                setJointError(error?.message || 'Unable to poll live joint telemetry.');
-            }
-        };
-
-        pollJointState();
-        const interval = window.setInterval(pollJointState, Math.max(updateInterval, 0.05) * 1000);
-
-        return () => {
-            cancelled = true;
-            window.clearInterval(interval);
-        };
-    }, [activeTab, currentRobot, goalAngles, selectedRobotId, updateInterval]);
-
-    const runCalibrationStep = async () => {
-        setCalibrationLoading(true);
-        setCalibrationError('');
-        appendSystemLog(`Calling /calibrate for ${robotInfoLabel}.`, 'warn');
-
+    // ── Calibration status polling ────────────────────────────────────────────
+    // Stable callback — reads from refs so it never needs to be recreated
+    const syncStatus = useCallback(async () => {
         try {
-            const response = await lerobotClient.calibrate(selectedRobotId);
-            setCalibrationState(response.calibration_status);
-            setCalibrationMessage(response.message);
-
-            const match = response.message.match(/[A-Z]:\\\\[^\n]+\.json|[A-Z]:\\[^\n]+\.json/);
-            if (match) {
-                setSavedConfigPath(match[0]);
+            const [s, tel] = await Promise.all([
+                lerobotClient.calibrationStatus(),
+                lerobotClient.teleopStatus().catch(() => ({ state: 'idle' })),
+            ]);
+            if (!mountedRef.current) return;
+            setTeleop(tel);
+            setCalStatus(s);
+            // Surface backend error to user immediately
+            if (s.error && uiStatusRef.current === 'in_progress') {
+                setUiStatus('error');
+                setErrorMsg(s.error);
             }
 
-            if (response.calibration_status === 'success') {
-                setWizardStep(3);
-            } else {
-                setWizardStep(clamp(response.current_step + 1, 1, 3));
-            }
-
-            if (response.calibration_status === 'error') {
-                setCalibrationError(response.message);
-            }
-
-            appendSystemLog(
-                response.message || `Calibration state: ${response.calibration_status}.`,
-                response.calibration_status === 'success'
-                    ? 'ok'
-                    : response.calibration_status === 'error'
-                        ? 'error'
-                        : 'warn',
+            const positions    = s.live_joint_positions || {};
+            const liveRange    = s.live_range || null;
+            const completedMap = new Map(
+                (s.steps || [])
+                    .filter(step => step.status === 'completed' && step.result)
+                    .map(step => [step.id, step.result]),
             );
-        } catch (error) {
-            const message = error?.body?.detail || error?.message || 'Calibration request failed.';
-            setCalibrationState('error');
-            setCalibrationError(message);
-            appendSystemLog(message, 'error');
-        } finally {
-            setCalibrationLoading(false);
-        }
-    };
 
-    const resetCalibration = () => {
-        setWizardStep(1);
-        setCalibrationState('idle');
-        setCalibrationMessage('');
-        setCalibrationError('');
-        setSavedConfigPath('');
-        appendSystemLog('Calibration wizard reset locally.', 'neutral');
-    };
-
-    const handleTorqueToggle = async (torqueStatus) => {
-        setTorqueActionState(torqueStatus ? 'enabling' : 'disabling');
-        try {
-            await lerobotClient.toggleTorque({ robotId: selectedRobotId, torque_status: torqueStatus });
-            setJointError('');
-            appendSystemLog(`Torque ${torqueStatus ? 'enabled' : 'disabled'} for ${robotInfoLabel}.`, torqueStatus ? 'ok' : 'warn');
-        } catch (error) {
-            const message = error?.body?.detail || error?.message || 'Torque update failed.';
-            setJointError(message);
-            appendSystemLog(message, 'error');
-        } finally {
-            setTorqueActionState('idle');
-        }
-    };
-
-    const handleJointWrite = async (jointIndex, value) => {
-        const nextGoals = goalAngles.map((angle, index) => (index === jointIndex ? value : angle));
-        setGoalAngles(nextGoals);
-        setPositionHistory((previous) =>
-            previous.map((series, index) =>
-                index === jointIndex ? series.map((point) => ({ ...point, goal: value })) : series,
-            ),
-        );
-
-        try {
-            await lerobotClient.writeJoints({
-                robotId: selectedRobotId,
-                angles: nextGoals,
-                unit: 'motor_units',
-                joints_ids: null,
+            setCalRanges(prev => {
+                const next = JOINTS.map(j => {
+                    const done     = completedMap.get(`range_${j.id}`);
+                    const isActive = liveRange?.joint === j.id;
+                    return {
+                        id:    j.id,
+                        label: j.label,
+                        min: isActive ? Number(liveRange.measured_min)
+                            : done?.measured_min != null ? Number(done.measured_min) : null,
+                        pos: positions[j.id] != null ? Number(positions[j.id]) : null,
+                        max: isActive ? Number(liveRange.measured_max)
+                            : done?.measured_max != null ? Number(done.measured_max) : null,
+                    };
+                });
+                // Skip re-render when nothing changed
+                const same = prev.every((p, i) => p.min === next[i].min && p.pos === next[i].pos && p.max === next[i].max);
+                return same ? prev : next;
             });
-            setJointError('');
-        } catch (error) {
-            const message = error?.body?.detail || error?.message || 'Joint write failed.';
-            setJointError(message);
-            appendSystemLog(message, 'error');
-        }
-    };
 
-    const handleRobotSelect = (event) => {
-        const nextId = Number(event.target.value);
-        setSelectedRobotId(nextId);
-        const nextRobot = robotStatuses[nextId] ?? null;
-        const nextDevice = robotDevices[nextId] ?? null;
-        if (nextRobot) {
-            appendSystemLog(`Target robot set to ${formatRobotLabel(nextRobot, nextDevice)}.`, 'neutral');
-        }
-    };
-
-    const stopEstopHold = useCallback(() => {
-        if (estopTimerRef.current) {
-            window.clearInterval(estopTimerRef.current);
-            estopTimerRef.current = null;
-        }
-        setEstopHoldProgress(0);
-    }, []);
-
-    const startEstopHold = useCallback(() => {
-        if (estopTimerRef.current) return;
-
-        const startedAt = performance.now();
-        estopTimerRef.current = window.setInterval(() => {
-            const nextProgress = clamp(((performance.now() - startedAt) / ESTOP_HOLD_MS) * 100, 0, 100);
-            setEstopHoldProgress(nextProgress);
-
-            if (nextProgress >= 100) {
-                window.clearInterval(estopTimerRef.current);
-                estopTimerRef.current = null;
-                appendSystemLog('E-STOP requested, but the current backend does not expose a hardware stop endpoint.', 'error');
-                window.setTimeout(() => {
-                    if (mountedRef.current) {
-                        setEstopHoldProgress(0);
-                    }
-                }, 350);
+            // Sync wizard step using refs (no dependency, no re-creation)
+            if (s.state === 'completed' && uiStatusRef.current !== 'completed') {
+                setWizardStep(3);
+                setUiStatus('completed');
+                setArtifactPath(s.artifact_path || '');
+            } else if (s.state === 'running' && wizardStepRef.current === 1) {
+                setWizardStep(2);
+                setUiStatus('in_progress');
+                setErrorMsg('');
+            } else if (s.state === 'completed' && uiStatusRef.current === 'completed') {
+                setErrorMsg('');
+            } else if ((s.state === 'idle' || s.state === 'stopped') && wizardStepRef.current === 2) {
+                setWizardStep(1);
+                setUiStatus('idle');
+                setErrorMsg('');
             }
-        }, 16);
-    }, [appendSystemLog]);
+        } catch {
+            // ignore network errors silently
+        }
+    }, []); // stable — no state deps
 
-    const renderCalibrationTab = () => (
-        <div className="grid gap-4">
-            <PanelFrame className="p-5 md:p-6">
-                <div className="flex flex-col gap-5">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    // Dynamic polling speed without restarting the interval on every state change
+    const uiStatusForInterval = uiStatus === 'in_progress' ? 'fast' : 'slow';
+    useEffect(() => {
+        syncStatus();
+        const ms = uiStatusForInterval === 'fast' ? 500 : 2000;
+        const id = setInterval(syncStatus, ms);
+        return () => clearInterval(id);
+    }, [syncStatus, uiStatusForInterval]);
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+
+    const handleStart = async () => {
+        setUiStatus('loading');
+        setErrorMsg('');
+        try {
+            const payload = { robot_type: robotConfig?.robot_type || 'so101_follower' };
+            if (robotConfig?.serial_port) payload.serial_port = robotConfig.serial_port;
+            await lerobotClient.calibrationStart(payload);
+            setWizardStep(2);
+            setUiStatus('in_progress');
+        } catch (e) {
+            const raw = e?.body?.message || e?.message || '';
+            const msg = raw.toLowerCase().includes('fetch') || raw.toLowerCase().includes('network')
+                ? 'Runtime service unreachable. Make sure the Python service is running on port 8040.'
+                : raw || 'Calibration failed to start.';
+            setUiStatus('error');
+            setErrorMsg(msg);
+        }
+    };
+
+    const handleNextStep = async () => {
+        setUiStatus('loading');
+        setErrorMsg('');
+        const t0 = Date.now();
+        try {
+            const res = await lerobotClient.calibrationStep({});
+            if (res.state === 'completed') {
+                setWizardStep(3);
+                setUiStatus('completed');
+                setArtifactPath(res.artifact_path || '');
+            } else {
+                setUiStatus('in_progress');
+            }
+        } catch (e) {
+            // Enforce a minimum loading duration so the button doesn't flash
+            const elapsed = Date.now() - t0;
+            if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed));
+            const raw = e?.body?.message || e?.message || '';
+            const msg = raw.toLowerCase().includes('fetch') || raw.toLowerCase().includes('network')
+                ? 'Runtime service unreachable. Is the Python service running?'
+                : raw || 'Step failed. Move the joint through its full range and retry.';
+            setUiStatus('in_progress');
+            setErrorMsg(msg);
+        }
+    };
+
+    const handleRestart = async () => {
+        try { await lerobotClient.calibrationStop(); } catch { /* ignore */ }
+        setWizardStep(1);
+        setUiStatus('idle');
+        setErrorMsg('');
+        setArtifactPath('');
+        setCalRanges(EMPTY_RANGES);
+        setCalStatus(null);   // clear stale sidebar immediately — polling will repopulate
+    };
+
+    // ── Derived values ────────────────────────────────────────────────────────
+    const robotType    = robotConfig?.robot_type  || 'so101_follower';
+    const serialPort   = robotConfig?.serial_port || null;
+    const teleopActive = ['running', 'starting'].includes(teleop?.state);
+    const missingJoints = calStatus?.missing_joints || [];
+    const partialHardware = Boolean(calStatus?.partial_hardware);
+    const totalSteps  = calStatus?.total_steps ?? 8;
+    const stepIndex   = calStatus?.current_step_index ?? 0;
+    const currentStep = calStatus?.current_step ?? null;
+    const isSweep     = currentStep?.action === 'sweep';
+    const isSave      = currentStep?.action === 'save';
+    const isLoading   = uiStatus === 'loading';
+    const isRecording = uiStatus === 'in_progress' && isSweep;
+    const progressPct = wizardStep === 3 ? 100 : wizardStep === 2 ? Math.round(((stepIndex + 1) / totalSteps) * 100) : 0;
+
+    // Button label
+    const btnLabel = isLoading
+        ? 'Calibrating…'
+        : wizardStep === 1
+            ? 'Start Calibration'
+            : isSave
+                ? 'Complete Calibration'
+                : 'Next Step';
+
+    // Step image: position-1 for zero step, position-2 for range/save
+    const stepImg    = wizardStep === 2 && (isSweep || isSave) ? calibrationPosition2 : calibrationPosition1;
+    const imgCaption = wizardStep === 2 && isSweep
+        ? `Move ${currentStep?.joint?.replace(/_/g, ' ')} through its full range. Min/Max values are recorded automatically.`
+        : wizardStep === 2
+            ? 'Follow the on-screen instructions and confirm each position.'
+            : 'Position 1 and Position 2 are shown here for reference.';
+
+    // ── Render ────────────────────────────────────────────────────────────────
+    return (
+        <div className="relative min-h-full overflow-hidden bg-black text-white" style={{ fontFamily: "'JetBrains Mono', 'SF Mono', monospace" }}>
+            {/* Background */}
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.04),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.06),transparent_28%),linear-gradient(180deg,#050505_0%,#000_100%)]" />
+
+            <div className="relative z-10 mx-auto max-w-[1400px] px-3 py-3 md:px-5 md:py-5">
+
+                {/* ── HEADER ─────────────────────────────────────────────────── */}
+                <div className={glassCard('mb-4 p-4 md:p-5')}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/36">Calibration Wizard</div>
-                            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-white md:text-5xl">{currentStep.title}</h2>
-                            <p
-                                className="mt-3 max-w-3xl font-mono text-sm leading-7 text-white/62 md:text-[15px]"
-                                style={{
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical',
-                                    overflow: 'hidden',
-                                }}
-                            >
-                                {currentStep.description}
+                            <h1 className="text-2xl font-semibold tracking-[-0.05em] text-white md:text-3xl">Calibration</h1>
+                            <p className="mt-1 font-mono text-xs text-white/45">
+                                SO-ARM101 · {robotType} · {serialPort || 'no port'}
                             </p>
                         </div>
-
-                        <div className="text-left md:text-right">
-                            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/36">
-                                STEP {wizardStep} / 3
-                            </div>
-                            <div className="mt-3">
-                                <StatusPill tone={calibrationTone}>{calibrationStateLabel}</StatusPill>
-                            </div>
+                        <div className="flex flex-wrap gap-2">
+                            {teleopActive && (
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-amber-300">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                                    Teleop Active
+                                </span>
+                            )}
+                            {uiStatus === 'completed' && (
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Completed
+                                </span>
+                            )}
                         </div>
                     </div>
+                </div>
 
-                    <div className="h-[3px] overflow-hidden rounded-full bg-white/8">
-                        <div className="h-full rounded-full bg-emerald-400 transition-all duration-300" style={{ width: progressPct }} />
+                {/* ── TELEOP BLOCKER ─────────────────────────────────────────── */}
+                {teleopActive && wizardStep === 1 && (
+                    <div className="mb-4">
+                        <Alert variant="warning" icon={AlertTriangle} title="Teleop is active">
+                            Stop the teleop session before starting calibration.
+                        </Alert>
                     </div>
+                )}
 
-                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-                        <ReferencePanel step={currentStep} />
+                {/* ── DRY-RUN NOTICE ────────────────────────────────────────── */}
+                {!serialPort && wizardStep === 1 && uiStatus !== 'error' && (
+                    <div className="mb-4">
+                        <Alert variant="warning" icon={AlertTriangle} title="No serial port configured">
+                            Calibration will run in <strong>dry-run / simulation mode</strong>. No real hardware will be touched. Configure a port in Hardware Setup for real calibration.
+                        </Alert>
+                    </div>
+                )}
 
-                        <div className="grid gap-4">
-                            <PanelFrame className="p-4 md:p-5">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/36">Current State</div>
-                                        <div className="mt-3">
-                                            <StatusPill tone={calibrationTone}>{calibrationStateLabel}</StatusPill>
+                {/* ── PARTIAL HARDWARE WARNING ───────────────────────────────── */}
+                {partialHardware && missingJoints.length > 0 && (
+                    <div className="mb-4">
+                        <Alert variant="warning" icon={AlertTriangle} title="Incomplete robot set — missing servo(s)">
+                            Calibration will continue without: <strong>{missingJoints.map(j => j.replace(/_/g, ' ')).join(', ')}</strong>.
+                            Those joints will keep nominal values. Check the cable on the missing servo and restart to do a full calibration.
+                        </Alert>
+                    </div>
+                )}
+
+                {/* ── MAIN LAYOUT ────────────────────────────────────────────── */}
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+
+                    {/* LEFT: Wizard */}
+                    <div className={glassCard('p-5 md:p-6')}>
+
+                        {/* Step 1 */}
+                        {wizardStep === 1 && (
+                            <div className="space-y-5">
+                                <div>
+                                    <h2 className="text-xl font-semibold text-white">Prepare Your Robot</h2>
+                                    <p className="mt-2 font-mono text-sm leading-7 text-white/55">
+                                        Confirm the target robot, support the arm, and clear the workspace before torque is released.
+                                    </p>
+                                </div>
+
+                                {/* Safety warning — identical to phosphobot */}
+                                <Alert variant="destructive" icon={AlertTriangle} title="Safety Warning">
+                                    Make sure you can safely catch your robot. Calibration disables torque.
+                                </Alert>
+
+                                {/* Robot info */}
+                                {robotConfig && (
+                                    <div className="rounded-[1rem] border border-white/10 bg-white/[0.03] p-4 space-y-2">
+                                        <SectionLabel>Robot to calibrate</SectionLabel>
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-mono text-xs text-white/45">Type</span>
+                                            <span className="font-mono text-xs text-white/80">{robotType}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between border-t border-white/8 pt-2">
+                                            <span className="font-mono text-xs text-white/45">Port</span>
+                                            <span className={cn('font-mono text-xs', serialPort ? 'text-emerald-300' : 'text-red-300/80')}>
+                                                {serialPort || 'not configured'}
+                                            </span>
                                         </div>
                                     </div>
-                                    {calibrationLoading ? <Loader2 className="h-5 w-5 animate-spin text-amber-200" /> : null}
+                                )}
+
+                                {/* Reference thumbnails */}
+                                <div>
+                                    <SectionLabel>Reference Overview</SectionLabel>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="overflow-hidden rounded-[1rem] border border-white/10">
+                                            <img src={calibrationPosition1} alt="Position 1" className="h-32 w-full object-cover" />
+                                            <div className="border-t border-white/8 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.18em] text-white/40">Position 1</div>
+                                        </div>
+                                        <div className="overflow-hidden rounded-[1rem] border border-white/10">
+                                            <img src={calibrationPosition2} alt="Position 2" className="h-32 w-full object-cover" />
+                                            <div className="border-t border-white/8 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.18em] text-white/40">Position 2</div>
+                                        </div>
+                                    </div>
+                                    <p className="mt-2 font-mono text-[10px] leading-5 text-white/38">
+                                        Position 1 and Position 2 are used in steps below. Match these reference poses closely before confirming each step.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 2 */}
+                        {wizardStep === 2 && (
+                            <div className="space-y-5">
+                                {/* Dynamic step title from backend */}
+                                <div>
+                                    <h2 className="text-xl font-semibold text-white">
+                                        {currentStep?.title || 'Calibrating…'}
+                                    </h2>
+                                    <p className="mt-2 font-mono text-sm leading-7 text-white/55">
+                                        {currentStep?.description || 'Follow the instructions and confirm each position.'}
+                                    </p>
                                 </div>
 
-                                <div className="mt-4 grid gap-3">
-                                    <button
-                                        onClick={runCalibrationStep}
-                                        disabled={calibrationLoading || !backendOnline || !currentRobot}
-                                        className={joinClasses(
-                                            styles.actionBtn,
-                                            'inline-flex items-center justify-center gap-2 rounded-[1.05rem] border border-emerald-400/30 bg-emerald-500/12 px-4 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-50 transition-all hover:bg-emerald-500/18 disabled:cursor-not-allowed disabled:opacity-40',
-                                        )}
-                                    >
-                                        <ArrowRight className="h-4 w-4" />
-                                        {calibrationActionLabel}
-                                    </button>
-
-                                    <button
-                                        onClick={resetCalibration}
-                                        className={joinClasses(
-                                            styles.actionBtn,
-                                            'inline-flex items-center justify-center gap-2 rounded-[1.05rem] border border-white/10 bg-white/5 px-4 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/72 transition-all hover:border-white/20 hover:text-white',
-                                        )}
-                                    >
-                                        <RotateCcw className="h-4 w-4" />
-                                        RESET
-                                    </button>
-
-                                    <button
-                                        onClick={() => setTutorialOpen((open) => !open)}
-                                        className={joinClasses(
-                                            styles.actionBtn,
-                                            'inline-flex items-center justify-center gap-2 rounded-[1.05rem] border border-white/10 bg-black/45 px-4 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/72 transition-all hover:border-white/20 hover:text-white',
-                                        )}
-                                    >
-                                        <Play className="h-4 w-4" />
-                                        TUTORIAL
-                                    </button>
+                                {/* Reference image */}
+                                <div className="overflow-hidden rounded-[1.2rem] border border-white/10">
+                                    <img
+                                        src={stepImg}
+                                        alt={imgCaption}
+                                        className="h-[240px] w-full object-cover object-center md:h-[300px]"
+                                    />
+                                    <div className="border-t border-white/8 px-4 py-3">
+                                        <p className="font-mono text-[11px] leading-5 text-white/50">{imgCaption}</p>
+                                    </div>
                                 </div>
-                            </PanelFrame>
 
-                            {tutorialOpen ? (
-                                <PanelFrame className="p-4 md:p-5">
-                                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/36">Step Tutorial</div>
-                                    <div className="mt-4 space-y-3">
-                                        {currentStep.physical.map((item) => (
+                                {/* Physical instructions */}
+                                {isSweep && (
+                                    <div className="space-y-2">
+                                        {[
+                                            `Move ${currentStep?.joint?.replace(/_/g, ' ')} through its complete range of motion.`,
+                                            'Go to the minimum position, then to the maximum position.',
+                                            'Hold for a moment at each extreme before clicking Next Step.',
+                                        ].map(item => (
                                             <div key={item} className="flex items-start gap-3">
-                                                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-emerald-300/90" />
-                                                <span className="font-mono text-sm leading-7 text-white/72">{item}</span>
+                                                <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/80" />
+                                                <span className="font-mono text-sm leading-7 text-white/65">{item}</span>
                                             </div>
                                         ))}
                                     </div>
-                                </PanelFrame>
-                            ) : null}
-
-                            {savedConfigPath ? (
-                                <PanelFrame className="p-4 md:p-5">
-                                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-emerald-200">Saved Config</div>
-                                    <div className="mt-3 break-all font-mono text-xs leading-6 text-emerald-100/82">
-                                        {savedConfigPath}
+                                )}
+                                {!isSweep && !isSave && (
+                                    <div className="space-y-2">
+                                        {[
+                                            'Move all joints to their center (midpoint) position.',
+                                            'The robot torque is disabled — support the arm.',
+                                            'Confirm when ready to proceed.',
+                                        ].map(item => (
+                                            <div key={item} className="flex items-start gap-3">
+                                                <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/80" />
+                                                <span className="font-mono text-sm leading-7 text-white/65">{item}</span>
+                                            </div>
+                                        ))}
                                     </div>
-                                </PanelFrame>
-                            ) : null}
-
-                            {calibrationMessage ? (
-                                <PanelFrame className="p-4 md:p-5">
-                                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/36">Latest Response</div>
-                                    <div className={joinClasses('mt-3 font-mono text-sm leading-7', toneClass(calibrationTone))}>
-                                        {calibrationMessage}
+                                )}
+                                {isSave && (
+                                    <div className="space-y-2">
+                                        {[
+                                            'All ranges have been recorded.',
+                                            'Click Complete Calibration to write the data to disk.',
+                                            'The calibration file will be saved to the robot config directory.',
+                                        ].map(item => (
+                                            <div key={item} className="flex items-start gap-3">
+                                                <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/80" />
+                                                <span className="font-mono text-sm leading-7 text-white/65">{item}</span>
+                                            </div>
+                                        ))}
                                     </div>
-                                    {calibrationError ? (
-                                        <div className="mt-3 rounded-[1rem] border border-red-500/25 bg-red-500/10 px-3 py-2 font-mono text-xs leading-6 text-red-100/82">
-                                            {calibrationError}
-                                        </div>
-                                    ) : null}
-                                </PanelFrame>
-                            ) : null}
-                        </div>
-                    </div>
-                </div>
-            </PanelFrame>
+                                )}
+                            </div>
+                        )}
 
-            <PanelFrame className="p-4">
-                <div className="flex flex-wrap gap-3">
-                    {[STEP_CONTENT[1], STEP_CONTENT[2], STEP_CONTENT[3]].map((step) => (
-                        <StepPill key={step.id} step={step} active={step.id === wizardStep} />
-                    ))}
-                </div>
-            </PanelFrame>
-
-            <TerminalPanel lines={systemLog} terminalRef={terminalRef} />
-        </div>
-    );
-
-    const renderJointsTab = () => (
-        <div className="grid gap-4">
-            <PanelFrame className="p-5 md:p-6">
-                <div className="flex flex-col gap-5">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                        <div>
-                            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/36">Joints Control</div>
-                            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-white md:text-4xl">
-                                Direct Motor Targets and Live Telemetry
-                            </h2>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <StatusPill tone={backendOnline ? 'ok' : 'error'}>
-                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                                {backendOnline ? 'Backend Online' : 'Backend Offline'}
-                            </StatusPill>
-                            <StatusPill tone="neutral">{plotMode === 'position' ? 'Position Plot' : 'Torque Plot'}</StatusPill>
-                        </div>
-                    </div>
-
-                    <div className="grid gap-4 xl:grid-cols-4">
-                        <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4">
-                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Device</div>
-                            <div className="mt-3 flex items-center gap-3 text-white">
-                                <Usb className="h-4 w-4 text-emerald-300" />
+                        {/* Step 3 */}
+                        {wizardStep === 3 && (
+                            <div className="space-y-5 text-center">
+                                <CheckCircle className="mx-auto h-14 w-14 text-emerald-400" />
                                 <div>
-                                    <div className="font-mono text-sm font-bold uppercase tracking-[0.14em]">
-                                        {currentDevice?.device ?? 'UNAVAILABLE'}
+                                    <h2 className="text-2xl font-semibold tracking-[-0.04em] text-white">Calibration Complete</h2>
+                                    <p className="mt-2 font-mono text-sm text-white/50">
+                                        All joints have been calibrated and the data has been saved.
+                                    </p>
+                                </div>
+                                {artifactPath && (
+                                    <div className="rounded-[1rem] border border-white/10 bg-black/50 px-4 py-3 text-left">
+                                        <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/35 mb-1">Saved to</div>
+                                        <div className="font-mono text-xs text-white/65 break-all">{artifactPath}</div>
                                     </div>
-                                    <div className="mt-1 font-mono text-xs text-white/42">
-                                        {currentDevice?.serial_number ?? currentRobot?.device_name ?? 'NO SERIAL'}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4">
-                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Torque</div>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                <button
-                                    onClick={() => handleTorqueToggle(true)}
-                                    disabled={!currentRobot || torqueActionState !== 'idle'}
-                                    className={joinClasses(
-                                        styles.actionBtn,
-                                        'rounded-xl border border-emerald-400/26 bg-emerald-500/12 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-100 transition-all hover:bg-emerald-500/18 disabled:opacity-40',
-                                    )}
-                                >
-                                    ENABLE
-                                </button>
-                                <button
-                                    onClick={() => handleTorqueToggle(false)}
-                                    disabled={!currentRobot || torqueActionState !== 'idle'}
-                                    className={joinClasses(
-                                        styles.actionBtn,
-                                        'rounded-xl border border-amber-400/26 bg-amber-500/10 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-amber-100 transition-all hover:bg-amber-500/16 disabled:opacity-40',
-                                    )}
-                                >
-                                    DISABLE
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4">
-                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Plot Mode</div>
-                            <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-black/45 p-1">
-                                {['position', 'torque'].map((mode) => (
-                                    <button
-                                        key={mode}
-                                        onClick={() => setPlotMode(mode)}
-                                        className={joinClasses(
-                                            styles.actionBtn,
-                                            'rounded-lg px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-all',
-                                            plotMode === mode
-                                                ? 'border border-white/14 bg-white/10 text-white'
-                                                : 'border border-transparent text-white/42 hover:bg-white/5 hover:text-white/72',
-                                        )}
-                                    >
-                                        {mode}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4">
-                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/34">Poll Interval</div>
-                            <input
-                                type="number"
-                                min={0.05}
-                                max={1}
-                                step={0.05}
-                                value={updateInterval}
-                                onChange={(event) => setUpdateInterval(Number(event.target.value))}
-                                className="mt-3 w-full rounded-xl border border-white/10 bg-black/55 px-3 py-3 font-mono text-sm text-white outline-none transition-all focus:border-white/22"
-                            />
-                        </div>
-                    </div>
-
-                    {jointError ? (
-                        <div className="rounded-[1.15rem] border border-red-500/24 bg-red-500/10 px-4 py-3 font-mono text-sm leading-7 text-red-100/84">
-                            {jointError}
-                        </div>
-                    ) : null}
-                </div>
-            </PanelFrame>
-
-            <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-                <PanelFrame className="p-5 md:p-6">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/34">Motor Targets</div>
-                    <div className="mt-5 space-y-4">
-                        {JOINTS.map((joint, index) => (
-                            <div key={joint.id} className="rounded-[1.2rem] border border-white/10 bg-white/5 p-4">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/66">
-                                        {joint.label}
-                                    </div>
-                                    <div className="font-mono text-sm text-emerald-200">
-                                        {Math.round(goalAngles[index])}
-                                    </div>
-                                </div>
-                                <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/34">
-                                    Actual {Math.round(jointPositions[index])}
-                                </div>
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={POSITION_LIMIT}
-                                    step={1}
-                                    value={goalAngles[index]}
-                                    onChange={(event) => handleJointWrite(index, Number(event.target.value))}
-                                    className="mt-4 w-full accent-emerald-400"
-                                    disabled={!currentRobot}
-                                />
-                                <div className="mt-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-white/32">
-                                    <span>0</span>
-                                    <span>2048</span>
-                                    <span>4095</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </PanelFrame>
-
-                <PanelFrame className="p-5 md:p-6">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/34">Live Telemetry</div>
-                    <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {JOINTS.map((joint, index) => (
-                            <div key={joint.id} className="rounded-[1.2rem] border border-white/10 bg-white/5 p-4">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/66">
-                                            {joint.label}
-                                        </div>
-                                        <div className="mt-2 font-mono text-xs leading-6 text-white/42">
-                                            {plotMode === 'position'
-                                                ? `ACT ${Math.round(jointPositions[index])} / GOAL ${Math.round(goalAngles[index])}`
-                                                : `TORQUE ${jointTorques[index].toFixed(1)}`}
-                                        </div>
-                                    </div>
-                                    <Activity className="h-4 w-4 text-white/30" />
-                                </div>
-                                <div className="mt-4">
-                                    <MiniChart
-                                        data={plotMode === 'position' ? positionHistory[index] : torqueHistory[index]}
-                                        mode={plotMode}
-                                    />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </PanelFrame>
-            </div>
-
-            <TerminalPanel lines={systemLog} terminalRef={terminalRef} />
-        </div>
-    );
-
-    return (
-        <div
-            className="relative min-h-full overflow-hidden bg-black text-white"
-            style={{ fontFamily: "'JetBrains Mono', 'SF Mono', 'Consolas', monospace" }}
-        >
-            <div className={joinClasses(styles.gridPattern, 'pointer-events-none absolute inset-0 opacity-35')} />
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_24%),linear-gradient(180deg,#050505_0%,#000000_100%)]" />
-            <div className={joinClasses(styles.ambientOrb, 'pointer-events-none -left-16 top-10 h-56 w-56 bg-emerald-500/10')} />
-            <div className={joinClasses(styles.ambientOrb, 'pointer-events-none right-0 top-0 h-72 w-72 bg-red-500/6')} style={{ animationDelay: '2s' }} />
-
-            <div className="relative z-10 mx-auto flex max-w-[1600px] flex-col gap-4 px-3 py-3 md:px-4 md:py-4">
-                <PanelFrame className="p-4 md:p-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                        <div>
-                            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">Kecy Platform</div>
-                            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-white md:text-4xl">Robot Calibration</h1>
-                            <p className="mt-3 max-w-3xl font-mono text-sm leading-7 text-white/58">
-                                Guided calibration on the left rail, hardware execution on the right, and direct joint access without leaving this page.
-                            </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2 lg:justify-end">
-                            <StatusPill tone={backendOnline ? 'ok' : 'error'}>
-                                <Server className="h-3.5 w-3.5" />
-                                {backendOnline ? 'Backend Online' : 'Backend Offline'}
-                            </StatusPill>
-                            <StatusPill tone="neutral">
-                                <Usb className="h-3.5 w-3.5" />
-                                {robotInfoLabel}
-                            </StatusPill>
-                        </div>
-                    </div>
-                </PanelFrame>
-
-                <PanelFrame className="p-2">
-                    <div className="grid gap-2 md:grid-cols-2">
-                        {[
-                            { id: 'calibration', label: 'Calibration' },
-                            { id: 'joints', label: 'Joints Control' },
-                        ].map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={joinClasses(
-                                    styles.actionBtn,
-                                    'rounded-[1.15rem] border px-4 py-4 text-left font-mono text-[11px] font-bold uppercase tracking-[0.22em] transition-all',
-                                    activeTab === tab.id
-                                        ? 'border-white/16 bg-white/10 text-white'
-                                        : 'border-transparent bg-transparent text-white/44 hover:bg-white/5 hover:text-white/72',
                                 )}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
-                </PanelFrame>
-
-                <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
-                    <div className="grid gap-4 xl:content-start">
-                        <PanelFrame className="p-4">
-                            <div className="font-mono text-[10px] uppercase tracking-[0.32em] text-white/34">Robot Target</div>
-                            <div className="relative mt-4">
-                                <select
-                                    value={selectedRobotId}
-                                    onChange={handleRobotSelect}
-                                    disabled={robotStatuses.length === 0}
-                                    className="w-full appearance-none rounded-[1.1rem] border border-white/12 bg-black/70 px-4 py-4 pr-10 font-mono text-xs font-bold uppercase tracking-[0.18em] text-white outline-none transition-all focus:border-white/24 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    {robotStatuses.length === 0 ? (
-                                        <option value={0}>NO ROBOT DETECTED</option>
-                                    ) : (
-                                        robotStatuses.map((robot, index) => (
-                                            <option key={`${robot.name}-${robot.device_name ?? index}`} value={index}>
-                                                {formatRobotLabel(robot, robotDevices[index])}
-                                            </option>
-                                        ))
-                                    )}
-                                </select>
-                                <ArrowRight className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-white/28" />
                             </div>
+                        )}
 
-                            <button
-                                onClick={refreshRuntime}
-                                disabled={runtimeRefreshing}
-                                className={joinClasses(
-                                    styles.actionBtn,
-                                    'mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[1.05rem] border border-white/10 bg-white/5 px-4 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/72 transition-all hover:border-white/20 hover:text-white disabled:cursor-wait disabled:opacity-50',
-                                )}
-                            >
-                                <RefreshCw className={joinClasses('h-4 w-4', runtimeRefreshing ? 'animate-spin' : '')} />
-                                REFRESH STATUS
-                            </button>
-                        </PanelFrame>
+                        {/* ── STATUS ALERTS (phosphobot pattern) ──────────── */}
+                        <div className="mt-5 space-y-3">
 
-                        <PanelFrame className="p-4">
-                            <div className="rounded-[1.25rem] border border-amber-500/22 bg-amber-500/10 p-4">
-                                <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-200">Detected Robot</div>
-                                <div className="mt-4 space-y-1">
-                                    <InfoRow label="Name" value={formatRobotName(currentRobot?.name)} tone="text-amber-100/84" />
-                                    <InfoRow label="Port" value={currentDevice?.device ?? currentRobot?.device_name ?? 'UNAVAILABLE'} tone="text-amber-100/84" />
-                                    <InfoRow label="Serial" value={currentDevice?.serial_number ?? currentRobot?.device_name ?? 'UNAVAILABLE'} tone="text-amber-100/84" />
-                                </div>
-                                {mockFallback ? (
-                                    <div className="mt-4 rounded-xl border border-amber-500/24 bg-black/35 px-3 py-2 font-mono text-[11px] leading-6 text-amber-100/78">
-                                        Mock fallback detected. Connect a real robot before saving production calibration data.
-                                    </div>
-                                ) : null}
-                            </div>
-                        </PanelFrame>
-
-                        <PanelFrame className="p-4">
-                            <div className="rounded-[1.25rem] border border-red-500/22 bg-red-500/10 p-4">
-                                <div className="flex items-start gap-3">
-                                    <AlertTriangle className="mt-0.5 h-4 w-4 text-red-200" />
-                                    <div>
-                                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-red-100">Safety Warning</div>
-                                        <p className="mt-3 font-mono text-xs leading-6 text-red-100/78">
-                                            Calibration releases torque. Support the arm, keep the work envelope clear, and avoid advancing any step while cables are under strain.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </PanelFrame>
-                    </div>
-
-                    <div className="min-w-0">{activeTab === 'calibration' ? renderCalibrationTab() : renderJointsTab()}</div>
-                </div>
-
-                <PanelFrame className="p-3 md:px-4 md:py-3">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <button
-                            onMouseDown={startEstopHold}
-                            onMouseUp={stopEstopHold}
-                            onMouseLeave={stopEstopHold}
-                            onTouchStart={startEstopHold}
-                            onTouchEnd={stopEstopHold}
-                            onTouchCancel={stopEstopHold}
-                            className={joinClasses(
-                                styles.estopBtn,
-                                styles.actionBtn,
-                                'relative overflow-hidden rounded-[1.05rem] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.22em]',
+                            {isLoading && (
+                                <Alert variant="loading" icon={Loader2} title="Calibrating your robot…">
+                                    This may take a few moments. Please don't move the robot.
+                                </Alert>
                             )}
-                        >
-                            <span
-                                className="absolute inset-y-0 left-0 bg-red-500/20 transition-[width] duration-75"
-                                style={{ width: `${estopHoldProgress}%` }}
-                            />
-                            <span className="relative inline-flex items-center gap-2">
-                                <AlertTriangle className="h-4 w-4" />
-                                E-STOP HOLD TO TRIGGER
-                            </span>
-                        </button>
 
-                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/34">
-                            KECYAI BUILD {versionLabel}
+                            {(uiStatus === 'in_progress' && !isLoading) && (
+                                <Alert variant="default" icon={Loader2} title="Calibration in Progress">
+                                    Step {stepIndex + 1} of {totalSteps} — {currentStep?.title || 'running'}
+                                </Alert>
+                            )}
+
+                            {uiStatus === 'completed' && wizardStep === 3 && (
+                                <Alert variant="success" icon={CheckCircle} title="Calibration Complete">
+                                    The calibration data has been written to disk successfully.
+                                </Alert>
+                            )}
+
+                            {uiStatus === 'error' && errorMsg && (
+                                <Alert variant="destructive" icon={AlertCircle} title="Calibration Failed">
+                                    <p>{errorMsg}</p>
+                                    <ul className="mt-2 list-disc pl-4 space-y-1 text-[11px]">
+                                        <li>Ensure the robot is connected via USB and powered on.</li>
+                                        <li>If you see a torque read error, check that all servo wires are fully seated.</li>
+                                        <li>Make sure no other program has the COM port open.</li>
+                                        <li>For sweep steps: move the joint through its full range before clicking Next.</li>
+                                    </ul>
+                                </Alert>
+                            )}
+
+                            {uiStatus === 'in_progress' && errorMsg && (
+                                <Alert variant="warning" icon={AlertTriangle} title="Step failed — you can retry">
+                                    {errorMsg}
+                                </Alert>
+                            )}
+                        </div>
+
+                        {/* ── ACTION BUTTONS ───────────────────────────────── */}
+                        <div className="mt-5 flex flex-col gap-3">
+
+                            {/* Primary action — matches phosphobot button layout exactly */}
+                            {wizardStep === 1 && (
+                                <button
+                                    onClick={handleStart}
+                                    disabled={isLoading || teleopActive}
+                                    className="w-full rounded-[1.05rem] border border-emerald-500/30 bg-emerald-500/12 px-5 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-50 transition-all hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40 flex items-center justify-center gap-2"
+                                >
+                                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                                    {btnLabel}
+                                </button>
+                            )}
+
+                            {wizardStep === 2 && (
+                                <button
+                                    onClick={handleNextStep}
+                                    disabled={isLoading}
+                                    className="w-full rounded-[1.05rem] border border-emerald-500/30 bg-emerald-500/12 px-5 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-50 transition-all hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40 flex items-center justify-center gap-2"
+                                >
+                                    {isLoading
+                                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Calibrating…</>
+                                        : <><ArrowRight className="h-4 w-4" /> {btnLabel}</>}
+                                </button>
+                            )}
+
+                            {/* Reset / Restart */}
+                            {(uiStatus === 'error' && wizardStep !== 1 || wizardStep === 3) && (
+                                <button
+                                    onClick={handleRestart}
+                                    disabled={isLoading}
+                                    className="w-full rounded-[1.05rem] border border-white/10 bg-white/[0.04] px-5 py-3.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/70 transition-all hover:border-white/20 hover:text-white disabled:opacity-40 flex items-center justify-center gap-2"
+                                >
+                                    <RotateCcw className="h-4 w-4" />
+                                    {wizardStep === 3 ? 'New Calibration' : 'Restart Calibration'}
+                                </button>
+                            )}
+
+                            {/* Reset available during step 2 — but not when the error-state button above is already showing */}
+                            {wizardStep === 2 && !isLoading && uiStatus !== 'error' && (
+                                <button
+                                    onClick={handleRestart}
+                                    className="w-full rounded-[1.05rem] border border-white/8 bg-transparent px-5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/38 transition-all hover:text-white/60 flex items-center justify-center gap-2"
+                                >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Restart from Beginning
+                                </button>
+                            )}
+                        </div>
+
+                        {/* ── PROGRESS BAR (phosphobot pattern) ────────────── */}
+                        <div className="mt-5">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="font-mono text-[10px] text-white/35">
+                                    {wizardStep === 3
+                                        ? 'All steps complete'
+                                        : wizardStep === 2
+                                            ? `Step ${stepIndex + 1} of ${totalSteps}`
+                                            : 'Ready to start'}
+                                </span>
+                                <span className="font-mono text-[10px] text-white/35">{progressPct}%</span>
+                            </div>
+                            <div className="h-[3px] overflow-hidden rounded-full bg-white/8">
+                                <div
+                                    className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                                    style={{ width: `${progressPct}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Video help link (phosphobot) */}
+                        <div className="mt-5">
+                            <a
+                                href="https://huggingface.co/docs/lerobot/so101#calibrate"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-[10px] text-white/30 underline hover:text-white/55 transition-colors"
+                            >
+                                Need help? Read the SO-101 calibration guide ↗
+                            </a>
                         </div>
                     </div>
-                </PanelFrame>
+
+                    {/* RIGHT SIDEBAR: Calibration Values Table */}
+                    <div className="space-y-4">
+                        <CalibrationValuesTable
+                            ranges={calRanges}
+                            isRecording={isRecording}
+                            activeJoint={isRecording ? currentStep?.joint : null}
+                        />
+
+                        {/* Steps summary */}
+                        {calStatus?.steps && calStatus.steps.length > 0 && (
+                            <div className={glassCard('p-4')}>
+                                <SectionLabel>Steps</SectionLabel>
+                                <div className="space-y-1.5">
+                                    {calStatus.steps.map(step => {
+                                        const done   = step.status === 'completed';
+                                        const active = step.status === 'current';
+                                        return (
+                                            <div key={step.id} className="flex items-center justify-between gap-2">
+                                                <span className={cn('font-mono text-[10px] truncate', done ? 'text-white/70' : active ? 'text-white/60' : 'text-white/28')}>
+                                                    {step.title || step.id}
+                                                </span>
+                                                <span className={cn(
+                                                    'font-mono text-[9px] font-bold uppercase tracking-[0.15em] shrink-0',
+                                                    done    ? 'text-emerald-400' :
+                                                    active  ? 'text-amber-300' :
+                                                              'text-white/18',
+                                                )}>
+                                                    {done ? '✓' : active ? '→' : '·'}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );

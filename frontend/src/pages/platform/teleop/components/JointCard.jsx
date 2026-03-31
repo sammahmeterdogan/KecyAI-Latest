@@ -1,15 +1,18 @@
 import React from 'react';
 
-const rad2deg = (rad) => (rad * 180 / Math.PI).toFixed(1);
+// Joint values are already in degrees — display directly
+const fmtDeg = (deg) => Number(deg).toFixed(1);
+const fmtTemp = (temp) => (typeof temp === 'number' && !Number.isNaN(temp) ? `${Math.round(temp)}C` : '--');
 
 const SENSITIVITY_STEPS = {
-    low: 0.05,
-    medium: 0.01,
-    high: 0.001,
+    low: 5,
+    medium: 1,
+    high: 0.1,
 };
 
 const JointCard = ({ joint, sensitivity, onUpdate, disabled }) => {
-    const percentage = ((joint.position - joint.minLimit) / (joint.maxLimit - joint.minLimit)) * 100;
+    const actualPosition = typeof joint.actualPosition === 'number' ? joint.actualPosition : joint.position;
+    const percentage = ((actualPosition - joint.minLimit) / (joint.maxLimit - joint.minLimit)) * 100;
     const clampedPct = Math.max(0, Math.min(100, percentage));
 
     const handleChange = (e) => onUpdate(joint.id, parseFloat(e.target.value));
@@ -42,8 +45,12 @@ const JointCard = ({ joint, sensitivity, onUpdate, disabled }) => {
                             <div className="w-1 h-4 bg-gradient-to-b from-white to-white/50" />
                             <h3 className="text-sm font-bold text-white tracking-wide uppercase">{joint.name}</h3>
                         </div>
-                        <div className="flex items-center gap-2 text-xs font-mono">
-                            <span className="text-white/70">{rad2deg(joint.position)}</span>
+                        <div className="flex items-center gap-2 text-xs font-mono flex-wrap">
+                            <span className="text-white/40">S{joint.servoId}</span>
+                            <span className="text-white/70">TGT {fmtDeg(joint.position)}</span>
+                            <span className="text-white/30">ACT {fmtDeg(actualPosition)}</span>
+                            <span className="text-white/20">|</span>
+                            <span className="text-white/40">TEMP {fmtTemp(joint.temperature)}</span>
                             <span className="text-white/20">|</span>
                             <span className={`px-2 py-0.5 rounded-md border ${status.bg} ${status.text} ${status.border} ${status.glow}`}>
                                 {joint.status.toUpperCase()}
@@ -86,8 +93,8 @@ const JointCard = ({ joint, sensitivity, onUpdate, disabled }) => {
 
                 {/* Range labels */}
                 <div className="flex justify-between mt-2 text-[10px] text-white/40 font-mono">
-                    <span>{rad2deg(joint.minLimit)}</span>
-                    <span>{rad2deg(joint.maxLimit)}</span>
+                    <span>{fmtDeg(joint.minLimit)}</span>
+                    <span>{fmtDeg(joint.maxLimit)}</span>
                 </div>
             </div>
         </div>

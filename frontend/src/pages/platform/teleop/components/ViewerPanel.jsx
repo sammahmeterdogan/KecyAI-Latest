@@ -1,12 +1,11 @@
 import React from 'react';
-import { Maximize2, Camera, Download, Activity, Zap, Thermometer } from 'lucide-react';
+import { Maximize2, Camera, Zap, Thermometer } from 'lucide-react';
 import MetricTile from './MetricTile';
 
-// Placeholder for 3D Viewer loading state
 const ViewerFallback = () => (
-    <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-[#060608]">
-        <div className="w-10 h-10 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
-        <span className="text-[11px] font-mono text-white/30 tracking-wider">LOADING 3D VIEWER...</span>
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-[#060608]">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/60" />
+        <span className="text-[11px] font-mono tracking-wider text-white/30">LOADING 3D VIEWER...</span>
     </div>
 );
 
@@ -17,71 +16,82 @@ const ViewerPanel = ({
     telemetry,
     isConnected,
     dryRun,
-    viewerRef
+    viewerRef,
 }) => {
-    return (
-        <div className="flex flex-col h-full bg-[#060608] relative overflow-hidden rounded-tl-2xl border-l border-t border-white/10">
+    const showMetrics = telemetry.voltage != null || telemetry.temperature != null;
 
-            {/* Top Overlay */}
-            <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start z-10 pointer-events-none">
-                {/* Live Indicator */}
-                <div className="flex flex-col gap-2">
-                    <div className="bg-black/40 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 pointer-events-auto">
-                        <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-red-500 animate-pulse' : 'bg-neutral-600'}`} />
-                        <span className="text-xs font-black tracking-widest text-white/80">LIVE RENDER</span>
-                    </div>
-                    {dryRun && (
-                        <div className="bg-amber-950/40 backdrop-blur-md border border-amber-500/30 px-3 py-1.5 rounded-lg pointer-events-auto">
-                            <span className="text-[10px] font-black text-amber-500 tracking-widest">SIMULATION MODE</span>
-                        </div>
-                    )}
+    return (
+        <div className="flex h-full flex-col overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#050608] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="flex items-center justify-between border-b border-white/8 bg-black/32 px-4 py-3 backdrop-blur-md md:px-5">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] font-medium text-white/68">
+                        Live render
+                    </span>
+                    <span
+                        className={`rounded-full border px-3 py-1.5 text-[11px] font-medium ${
+                            isConnected
+                                ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-100'
+                                : 'border-white/10 bg-white/[0.03] text-white/52'
+                        }`}
+                    >
+                        {isConnected ? 'Robot connected' : 'Awaiting session'}
+                    </span>
+                    {dryRun ? (
+                        <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[11px] font-medium text-amber-100">
+                            Dry run
+                        </span>
+                    ) : null}
                 </div>
 
-                {/* Actions Toolbar */}
-                <div className="flex items-center gap-2 pointer-events-auto">
+                <div className="flex items-center gap-2">
                     <button
                         onClick={onSnapshot}
-                        className="w-10 h-10 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center hover:bg-white/10 hover:border-white/20 transition-all text-white/60 hover:text-white"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/60 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                     >
-                        <Camera className="w-4 h-4" />
+                        <Camera className="h-4 w-4" />
                     </button>
                     <button
                         onClick={onFullscreen}
-                        className="w-10 h-10 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center hover:bg-white/10 hover:border-white/20 transition-all text-white/60 hover:text-white"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/60 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                     >
-                        <Maximize2 className="w-4 h-4" />
+                        <Maximize2 className="h-4 w-4" />
                     </button>
                 </div>
             </div>
 
-            {/* 3D Canvas Container */}
-            <div ref={viewerRef} className="flex-1 relative z-0">
+            <div ref={viewerRef} className="relative flex-1 overflow-hidden">
                 {children || <ViewerFallback />}
 
-                {/* Bottom Gradient for Stats */}
-                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black to-transparent pointer-events-none" />
+                <div
+                    className="pointer-events-none absolute inset-0 opacity-20"
+                    style={{
+                        backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
+                        backgroundSize: '40px 40px',
+                    }}
+                />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black via-black/35 to-transparent" />
             </div>
 
-            {/* Bottom Stats & Branding */}
-            <div className="absolute bottom-6 left-6 right-6 flex items-end justify-between z-10 pointer-events-none">
-                <div className="flex gap-4 pointer-events-auto">
-                    <MetricTile icon={Zap} label="Voltage" value={telemetry.voltage.toFixed(1)} unit="V" glowColor="rgba(234,179,8,0.2)" />
-                    <MetricTile icon={Thermometer} label="Temp" value={telemetry.temperature + "°"} unit="C" glowColor="rgba(239,68,68,0.2)" />
+            {showMetrics ? (
+                <div className="border-t border-white/8 bg-black/30 px-4 py-4 backdrop-blur-md md:px-5">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <MetricTile
+                            icon={Zap}
+                            label="Voltage"
+                            value={telemetry.voltage != null ? telemetry.voltage.toFixed(1) : '—'}
+                            unit="V"
+                            glowColor="rgba(234,179,8,0.2)"
+                        />
+                        <MetricTile
+                            icon={Thermometer}
+                            label="Temp"
+                            value={telemetry.temperature != null ? `${telemetry.temperature}°` : '—'}
+                            unit="C"
+                            glowColor="rgba(239,68,68,0.2)"
+                        />
+                    </div>
                 </div>
-
-                <div className="text-right opacity-50">
-                    <div className="text-[10px] font-black tracking-[0.2em] text-white/40 mb-1">PROCESSED BY</div>
-                    <div className="text-xl font-black italic tracking-tighter text-white">ROS ENGINE v2.4</div>
-                </div>
-            </div>
-
-            {/* Grid Overlay */}
-            <div className="absolute inset-0 pointer-events-none opacity-20"
-                style={{
-                    backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
-                    backgroundSize: '40px 40px'
-                }}
-            />
+            ) : null}
         </div>
     );
 };

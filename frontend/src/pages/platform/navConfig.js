@@ -13,6 +13,8 @@
     {
         section: 'Kullanım',
         items: [
+            { label: 'Desktop Launcher', path: '/kecy/platform/launcher' },
+            { label: 'Demo Launcher', path: '/kecy/platform/demo' },
             { label: 'Teleoperasyon', path: '/kecy/platform/teleop', sourceUrl: 'https://huggingface.co/docs/lerobot/il_robots#teleoperate' },
             { label: 'Kameralar', path: '/kecy/platform/cameras', sourceUrl: 'https://huggingface.co/docs/lerobot/cameras' },
             { label: 'Veri Toplama', path: '/kecy/platform/record', sourceUrl: 'https://huggingface.co/docs/lerobot/il_robots#record-a-dataset' },
